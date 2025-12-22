@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CLEARPROOF LAB CALCULATIONS SUITE
+// DR THOMAS STEVENSON - LABORATORY CALCULATIONS SUITE
 // A prestigious scientific calculator for laboratory professionals
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -38,6 +38,16 @@ const MOLECULAR_WEIGHTS: Record<string, { name: string; mw: number; formula: str
   'xgal': { name: 'X-Gal', mw: 408.63, formula: 'C₁₄H₁₅BrClNO₆' },
   'atp': { name: 'ATP Disodium', mw: 551.14, formula: 'C₁₀H₁₄N₅Na₂O₁₃P₃' },
   'dntps': { name: 'dNTP Mix', mw: 487.15, formula: 'Average' },
+  'sodium acetate': { name: 'Sodium Acetate', mw: 82.03, formula: 'CH₃COONa' },
+  'ammonium sulfate': { name: 'Ammonium Sulfate', mw: 132.14, formula: '(NH₄)₂SO₄' },
+  'sodium bicarbonate': { name: 'Sodium Bicarbonate', mw: 84.01, formula: 'NaHCO₃' },
+  'potassium acetate': { name: 'Potassium Acetate', mw: 98.14, formula: 'CH₃COOK' },
+  'magnesium sulfate': { name: 'Magnesium Sulfate', mw: 120.37, formula: 'MgSO₄' },
+  'lithium chloride': { name: 'Lithium Chloride', mw: 42.39, formula: 'LiCl' },
+  'cesium chloride': { name: 'Cesium Chloride', mw: 168.36, formula: 'CsCl' },
+  'sodium azide': { name: 'Sodium Azide', mw: 65.01, formula: 'NaN₃' },
+  'triton x-100': { name: 'Triton X-100', mw: 625, formula: 'C₁₄H₂₂O(C₂H₄O)ₙ' },
+  'tween 20': { name: 'Tween 20', mw: 1228, formula: 'C₅₈H₁₁₄O₂₆' },
 };
 
 // Common buffer pKa values
@@ -150,7 +160,7 @@ export default function LabCalculationsSuite() {
               <button
                 onClick={() => setShowMWDatabase(!showMWDatabase)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
-                  showMWDatabase 
+                showMWDatabase 
                     ? 'bg-amber-50 text-amber-600 border border-amber-200' 
                     : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300'
                 }`}
@@ -163,7 +173,7 @@ export default function LabCalculationsSuite() {
               <button
                 onClick={() => setShowHistory(!showHistory)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
-                  showHistory 
+                showHistory 
                     ? 'bg-amber-50 text-amber-600 border border-amber-200' 
                     : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300'
                 }`}
@@ -181,7 +191,7 @@ export default function LabCalculationsSuite() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* MW Database Panel */}
         {showMWDatabase && (
-          <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm animate-in slide-in-from-top-2 duration-300">
+          <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-slate-900">Molecular Weight Reference</h3>
               <input
@@ -213,7 +223,7 @@ export default function LabCalculationsSuite() {
 
         {/* History Panel */}
         {showHistory && history.length > 0 && (
-          <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm animate-in slide-in-from-top-2 duration-300">
+          <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-slate-900">Calculation History</h3>
               <button 
@@ -356,6 +366,138 @@ function InputField({
   );
 }
 
+// MW Input Field with inline search
+function MWInputField({ 
+  value, 
+  onChange,
+  label = "Molecular weight"
+}: { 
+  value: string; 
+  onChange: (v: string) => void;
+  label?: string;
+}) {
+  const [showSearch, setShowSearch] = useState(false);
+  const [search, setSearch] = useState('');
+  const [selectedCompound, setSelectedCompound] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredCompounds = useMemo(() => {
+    if (!search) return Object.entries(MOLECULAR_WEIGHTS).slice(0, 8);
+    const searchLower = search.toLowerCase();
+    return Object.entries(MOLECULAR_WEIGHTS).filter(
+      ([key, val]) => 
+        key.includes(searchLower) || 
+        val.name.toLowerCase().includes(searchLower) ||
+        val.formula.toLowerCase().includes(searchLower)
+    ).slice(0, 8);
+  }, [search]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowSearch(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectCompound = (mw: number, name: string) => {
+    onChange(mw.toString());
+    setSelectedCompound(name);
+    setShowSearch(false);
+    setSearch('');
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-700">{label}</label>
+      <div className="relative" ref={dropdownRef}>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type="number"
+              step="any"
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value);
+                setSelectedCompound(null);
+              }}
+              placeholder="0"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 text-lg font-mono placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 focus:bg-white transition-all pr-16"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">g/mol</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSearch(!showSearch)}
+            className={`px-4 py-3 rounded-lg border transition-all duration-200 flex items-center gap-2 ${
+              showSearch 
+                ? 'bg-amber-50 border-amber-300 text-amber-600' 
+                : 'bg-white border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600'
+            }`}
+            title="Search compound database"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Selected compound indicator */}
+        {selectedCompound && (
+          <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            {selectedCompound}
+          </p>
+        )}
+
+        {/* Search dropdown */}
+        {showSearch && (
+          <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+            <div className="p-3 border-b border-slate-100">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search compounds (e.g., NaCl, glucose)..."
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {filteredCompounds.length > 0 ? (
+                filteredCompounds.map(([key, val]) => (
+                  <button
+                    key={key}
+                    onClick={() => selectCompound(val.mw, val.name)}
+                    className="w-full text-left px-4 py-3 hover:bg-amber-50 transition-colors border-b border-slate-100 last:border-0 flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">{val.name}</div>
+                      <div className="text-xs text-amber-600 font-mono">{val.formula}</div>
+                    </div>
+                    <div className="text-lg font-semibold text-slate-600 font-mono">{val.mw.toLocaleString()}</div>
+                  </button>
+                ))
+              ) : (
+                <div className="px-4 py-6 text-center text-sm text-slate-500">
+                  No compounds found
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-2 bg-slate-50 border-t border-slate-100">
+              <p className="text-xs text-slate-500">Click a compound to auto-fill MW</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ResultDisplay({ label, value, unit, onCopy }: { label: string; value: string; unit: string; onCopy?: () => void }) {
   const [copied, setCopied] = useState(false);
 
@@ -453,7 +595,7 @@ function MolarityCalculator({ onCalculate }: CalculatorProps) {
         {mode !== 'mass' && (
           <InputField label="Mass of solute" value={mass} onChange={setMass} unit="g" />
         )}
-        <InputField label="Molecular weight" value={mw} onChange={setMw} unit="g/mol" />
+        <MWInputField value={mw} onChange={setMw} />
         {mode !== 'moles' && (
           <InputField label="Volume of solution" value={volume} onChange={setVolume} unit="mL" />
         )}
@@ -786,7 +928,7 @@ function UnitConverter({ onCalculate }: CalculatorProps) {
           unit={conversionType === 'mg_to_m' ? 'mg/mL' : conversionType === 'm_to_mg' ? 'M' : 'ppm'} 
         />
         {conversionType !== 'ppm' && (
-          <InputField label="Molecular weight" value={mw} onChange={setMw} unit="g/mol" />
+          <MWInputField value={mw} onChange={setMw} />
         )}
       </div>
 
@@ -833,7 +975,7 @@ function StockSolutionCalculator({ onCalculate }: CalculatorProps) {
       <div className="grid gap-4 mb-6">
         <InputField label="Desired stock concentration" value={stockConc} onChange={setStockConc} unit="M" />
         <InputField label="Volume to prepare" value={stockVol} onChange={setStockVol} unit="mL" />
-        <InputField label="Molecular weight" value={mw} onChange={setMw} unit="g/mol" />
+        <MWInputField value={mw} onChange={setMw} />
       </div>
 
       {result && (
