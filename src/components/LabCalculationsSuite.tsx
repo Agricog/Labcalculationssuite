@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DR THOMAS STEVENSON - LABORATORY CALCULATIONS SUITE
@@ -698,7 +698,7 @@ function DilutionCalculator({ onCalculate }: CalculatorProps) {
 }
 
 // Serial Dilution Calculator
-function SerialDilutionCalculator({ onCalculate }: CalculatorProps) {
+function SerialDilutionCalculator({ onCalculate: _onCalculate }: CalculatorProps) {
   const [initialConc, setInitialConc] = useState('');
   const [transferVol, setTransferVol] = useState('');
   const [diluentVol, setDiluentVol] = useState('');
@@ -1000,7 +1000,7 @@ function StockSolutionCalculator({ onCalculate }: CalculatorProps) {
 }
 
 // Buffer Calculator
-function BufferCalculator({ onCalculate }: CalculatorProps) {
+function BufferCalculator({ onCalculate: _onCalculate }: CalculatorProps) {
   const [selectedBuffer, setSelectedBuffer] = useState('');
   const [targetPH, setTargetPH] = useState('');
   const [totalConc, setTotalConc] = useState('');
