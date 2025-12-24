@@ -2,8 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { 
   FlaskConical, Calculator, Droplets, TestTube, Percent, ArrowRightLeft,
   Beaker, Scale, Activity, Search, X, Copy, Check, History, Trash2,
-  ChevronDown, ChevronUp, Info, Database, FolderPlus, Folder, Download,
-  FileText, Plus, FolderOpen
+  Info, Database, FolderPlus, Folder, Download, FolderOpen
 } from 'lucide-react'
 import jsPDF from 'jspdf'
 
