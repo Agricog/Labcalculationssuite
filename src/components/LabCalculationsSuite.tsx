@@ -1,1627 +1,1883 @@
-import { useState, useEffect, useMemo } from 'react'
-import { 
-  FlaskConical, Calculator, Droplets, TestTube, Percent, ArrowRightLeft,
-  Beaker, Scale, Activity, Search, X, Copy, Check, History, Trash2,
-  Info, Database, FolderPlus, Folder, Download, FolderOpen
-} from 'lucide-react'
-import jsPDF from 'jspdf'
+import { useState, useMemo, useRef, useEffect } from 'react';
+import jsPDF from 'jspdf';
 
-// Types
-interface Compound {
-  name: string
-  formula: string
-  mw: number
-  category: string
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// DR THOMAS STEVENSON - LABORATORY CALCULATIONS SUITE
+// A prestigious scientific calculator for laboratory professionals
+// ═══════════════════════════════════════════════════════════════════════════
 
-interface CalculationRecord {
-  id: string
-  calculator: string
-  inputs: Record<string, string>
-  result: { label: string; value: string; unit: string }
-  equation: string
-  timestamp: Date
+// Common molecular weights database
+const MOLECULAR_WEIGHTS: Record<string, { name: string; mw: number; formula: string }> = {
+  'nacl': { name: 'Sodium Chloride', mw: 58.44, formula: 'NaCl' },
+  'kcl': { name: 'Potassium Chloride', mw: 74.55, formula: 'KCl' },
+  'glucose': { name: 'D-Glucose', mw: 180.16, formula: 'C₆H₁₂O₆' },
+  'sucrose': { name: 'Sucrose', mw: 342.30, formula: 'C₁₂H₂₂O₁₁' },
+  'tris': { name: 'Tris Base', mw: 121.14, formula: 'C₄H₁₁NO₃' },
+  'edta': { name: 'EDTA Disodium', mw: 372.24, formula: 'C₁₀H₁₄N₂Na₂O₈·2H₂O' },
+  'hepes': { name: 'HEPES', mw: 238.30, formula: 'C₈H₁₈N₂O₄S' },
+  'sds': { name: 'SDS', mw: 288.38, formula: 'C₁₂H₂₅NaO₄S' },
+  'mgcl2': { name: 'Magnesium Chloride', mw: 95.21, formula: 'MgCl₂' },
+  'cacl2': { name: 'Calcium Chloride', mw: 110.98, formula: 'CaCl₂' },
+  'naoh': { name: 'Sodium Hydroxide', mw: 40.00, formula: 'NaOH' },
+  'hcl': { name: 'Hydrochloric Acid', mw: 36.46, formula: 'HCl' },
+  'bsa': { name: 'Bovine Serum Albumin', mw: 66430, formula: 'Protein' },
+  'ethanol': { name: 'Ethanol', mw: 46.07, formula: 'C₂H₅OH' },
+  'methanol': { name: 'Methanol', mw: 32.04, formula: 'CH₃OH' },
+  'glycerol': { name: 'Glycerol', mw: 92.09, formula: 'C₃H₈O₃' },
+  'urea': { name: 'Urea', mw: 60.06, formula: 'CH₄N₂O' },
+  'nacitrate': { name: 'Sodium Citrate', mw: 294.10, formula: 'Na₃C₆H₅O₇' },
+  'nh4cl': { name: 'Ammonium Chloride', mw: 53.49, formula: 'NH₄Cl' },
+  'kh2po4': { name: 'Potassium Phosphate Mono', mw: 136.09, formula: 'KH₂PO₄' },
+  'k2hpo4': { name: 'Potassium Phosphate Di', mw: 174.18, formula: 'K₂HPO₄' },
+  'na2hpo4': { name: 'Sodium Phosphate Di', mw: 141.96, formula: 'Na₂HPO₄' },
+  'nah2po4': { name: 'Sodium Phosphate Mono', mw: 119.98, formula: 'NaH₂PO₄' },
+  'imidazole': { name: 'Imidazole', mw: 68.08, formula: 'C₃H₄N₂' },
+  'dtt': { name: 'DTT (Dithiothreitol)', mw: 154.25, formula: 'C₄H₁₀O₂S₂' },
+  'bmercaptoethanol': { name: 'β-Mercaptoethanol', mw: 78.13, formula: 'C₂H₆OS' },
+  'pmsf': { name: 'PMSF', mw: 174.19, formula: 'C₇H₇FO₂S' },
+  'iptg': { name: 'IPTG', mw: 238.30, formula: 'C₉H₁₈O₅S' },
+  'xgal': { name: 'X-Gal', mw: 408.63, formula: 'C₁₄H₁₅BrClNO₆' },
+  'atp': { name: 'ATP Disodium', mw: 551.14, formula: 'C₁₀H₁₄N₅Na₂O₁₃P₃' },
+  'dntps': { name: 'dNTP Mix', mw: 487.15, formula: 'Average' },
+  'sodium acetate': { name: 'Sodium Acetate', mw: 82.03, formula: 'CH₃COONa' },
+  'ammonium sulfate': { name: 'Ammonium Sulfate', mw: 132.14, formula: '(NH₄)₂SO₄' },
+  'sodium bicarbonate': { name: 'Sodium Bicarbonate', mw: 84.01, formula: 'NaHCO₃' },
+  'potassium acetate': { name: 'Potassium Acetate', mw: 98.14, formula: 'CH₃COOK' },
+  'magnesium sulfate': { name: 'Magnesium Sulfate', mw: 120.37, formula: 'MgSO₄' },
+  'lithium chloride': { name: 'Lithium Chloride', mw: 42.39, formula: 'LiCl' },
+  'cesium chloride': { name: 'Cesium Chloride', mw: 168.36, formula: 'CsCl' },
+  'sodium azide': { name: 'Sodium Azide', mw: 65.01, formula: 'NaN₃' },
+  'triton x-100': { name: 'Triton X-100', mw: 625, formula: 'C₁₄H₂₂O(C₂H₄O)ₙ' },
+  'tween 20': { name: 'Tween 20', mw: 1228, formula: 'C₅₈H₁₁₄O₂₆' },
+};
+
+// Common buffer pKa values
+const BUFFER_PKA: Record<string, { name: string; pka: number; range: string }> = {
+  'phosphate': { name: 'Phosphate', pka: 7.2, range: '5.8–8.0' },
+  'tris': { name: 'Tris', pka: 8.1, range: '7.0–9.0' },
+  'hepes': { name: 'HEPES', pka: 7.5, range: '6.8–8.2' },
+  'mes': { name: 'MES', pka: 6.1, range: '5.5–6.7' },
+  'mops': { name: 'MOPS', pka: 7.2, range: '6.5–7.9' },
+  'pipes': { name: 'PIPES', pka: 6.8, range: '6.1–7.5' },
+  'bicine': { name: 'Bicine', pka: 8.3, range: '7.6–9.0' },
+  'tricine': { name: 'Tricine', pka: 8.1, range: '7.4–8.8' },
+  'acetate': { name: 'Acetate', pka: 4.76, range: '3.6–5.6' },
+  'citrate': { name: 'Citrate', pka: 6.4, range: '3.0–6.2' },
+  'glycine': { name: 'Glycine', pka: 9.6, range: '8.6–10.6' },
+  'borate': { name: 'Borate', pka: 9.2, range: '8.5–10.0' },
+  'caps': { name: 'CAPS', pka: 10.4, range: '9.7–11.1' },
+};
+
+type CalculatorTab = 
+  | 'molarity' 
+  | 'dilution' 
+  | 'serial' 
+  | 'percent' 
+  | 'conversion' 
+  | 'stock' 
+  | 'buffer' 
+  | 'osmolarity';
+
+interface CalculationHistory {
+  id: string;
+  type: CalculatorTab;
+  timestamp: Date;
+  inputs: Record<string, string | number>;
+  result: string;
+  equation?: string;
 }
 
 interface Project {
-  id: string
-  name: string
-  calculations: CalculationRecord[]
-  createdAt: Date
-  updatedAt: Date
+  id: string;
+  name: string;
+  calculations: CalculationHistory[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-// Molecular Weight Database
-const compounds: Compound[] = [
-  { name: 'Sodium Chloride', formula: 'NaCl', mw: 58.44, category: 'Salts' },
-  { name: 'Potassium Chloride', formula: 'KCl', mw: 74.55, category: 'Salts' },
-  { name: 'Calcium Chloride', formula: 'CaCl₂', mw: 110.98, category: 'Salts' },
-  { name: 'Magnesium Chloride', formula: 'MgCl₂', mw: 95.21, category: 'Salts' },
-  { name: 'Sodium Bicarbonate', formula: 'NaHCO₃', mw: 84.01, category: 'Salts' },
-  { name: 'Sodium Phosphate Dibasic', formula: 'Na₂HPO₄', mw: 141.96, category: 'Salts' },
-  { name: 'Potassium Phosphate Monobasic', formula: 'KH₂PO₄', mw: 136.09, category: 'Salts' },
-  { name: 'Ammonium Sulfate', formula: '(NH₄)₂SO₄', mw: 132.14, category: 'Salts' },
-  { name: 'HEPES', formula: 'C₈H₁₈N₂O₄S', mw: 238.30, category: 'Buffers' },
-  { name: 'Tris Base', formula: 'C₄H₁₁NO₃', mw: 121.14, category: 'Buffers' },
-  { name: 'Tris-HCl', formula: 'C₄H₁₁NO₃·HCl', mw: 157.60, category: 'Buffers' },
-  { name: 'MOPS', formula: 'C₇H₁₅NO₄S', mw: 209.26, category: 'Buffers' },
-  { name: 'MES', formula: 'C₆H₁₃NO₄S', mw: 195.24, category: 'Buffers' },
-  { name: 'PIPES', formula: 'C₈H₁₈N₂O₆S₂', mw: 302.37, category: 'Buffers' },
-  { name: 'Bicine', formula: 'C₆H₁₃NO₄', mw: 163.17, category: 'Buffers' },
-  { name: 'Tricine', formula: 'C₆H₁₃NO₅', mw: 179.17, category: 'Buffers' },
-  { name: 'EDTA Disodium', formula: 'C₁₀H₁₄N₂Na₂O₈·2H₂O', mw: 372.24, category: 'Chelators' },
-  { name: 'EGTA', formula: 'C₁₄H₂₄N₂O₁₀', mw: 380.35, category: 'Chelators' },
-  { name: 'Glucose', formula: 'C₆H₁₂O₆', mw: 180.16, category: 'Sugars' },
-  { name: 'Sucrose', formula: 'C₁₂H₂₂O₁₁', mw: 342.30, category: 'Sugars' },
-  { name: 'Mannitol', formula: 'C₆H₁₄O₆', mw: 182.17, category: 'Sugars' },
-  { name: 'Glycerol', formula: 'C₃H₈O₃', mw: 92.09, category: 'Sugars' },
-  { name: 'BSA', formula: 'Bovine Serum Albumin', mw: 66430, category: 'Proteins' },
-  { name: 'Lysozyme', formula: 'Chicken Egg White', mw: 14300, category: 'Proteins' },
-  { name: 'SDS', formula: 'C₁₂H₂₅NaO₄S', mw: 288.38, category: 'Detergents' },
-  { name: 'Triton X-100', formula: 'C₁₄H₂₂O(C₂H₄O)ₙ', mw: 625, category: 'Detergents' },
-  { name: 'Tween 20', formula: 'Polysorbate 20', mw: 1228, category: 'Detergents' },
-  { name: 'DTT', formula: 'C₄H₁₀O₂S₂', mw: 154.25, category: 'Reducing Agents' },
-  { name: 'β-Mercaptoethanol', formula: 'C₂H₆OS', mw: 78.13, category: 'Reducing Agents' },
-  { name: 'TCEP', formula: 'C₉H₁₅O₆P', mw: 250.19, category: 'Reducing Agents' },
-  { name: 'Urea', formula: 'CH₄N₂O', mw: 60.06, category: 'Denaturants' },
-  { name: 'Guanidine HCl', formula: 'CH₆ClN₃', mw: 95.53, category: 'Denaturants' },
-  { name: 'Imidazole', formula: 'C₃H₄N₂', mw: 68.08, category: 'Affinity' },
-  { name: 'ATP', formula: 'C₁₀H₁₆N₅O₁₃P₃', mw: 507.18, category: 'Nucleotides' },
-  { name: 'ADP', formula: 'C₁₀H₁₅N₅O₁₀P₂', mw: 427.20, category: 'Nucleotides' },
-  { name: 'NAD+', formula: 'C₂₁H₂₇N₇O₁₄P₂', mw: 663.43, category: 'Coenzymes' },
-  { name: 'NADH', formula: 'C₂₁H₂₉N₇O₁₄P₂', mw: 665.44, category: 'Coenzymes' },
-  { name: 'Glycine', formula: 'C₂H₅NO₂', mw: 75.07, category: 'Amino Acids' },
-  { name: 'L-Glutamine', formula: 'C₅H₁₀N₂O₃', mw: 146.14, category: 'Amino Acids' },
-  { name: 'PMSF', formula: 'C₇H₇FO₂S', mw: 174.19, category: 'Protease Inhibitors' },
-  { name: 'Aprotinin', formula: 'C₂₈₄H₄₃₂N₈₄O₇₉S₇', mw: 6512, category: 'Protease Inhibitors' },
-]
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════
 
-// Calculator Components
-const calculators = [
-  { id: 'molarity', name: 'Molarity', icon: FlaskConical, color: 'indigo' },
-  { id: 'dilution', name: 'Dilution', icon: Droplets, color: 'blue' },
-  { id: 'serial', name: 'Serial Dilution', icon: TestTube, color: 'cyan' },
-  { id: 'percent', name: 'Percent Solutions', icon: Percent, color: 'emerald' },
-  { id: 'convert', name: 'Unit Converter', icon: ArrowRightLeft, color: 'amber' },
-  { id: 'stock', name: 'Stock Preparation', icon: Beaker, color: 'orange' },
-  { id: 'buffer', name: 'Buffer Calculator', icon: Scale, color: 'purple' },
-  { id: 'osmolarity', name: 'Osmolarity', icon: Activity, color: 'rose' },
-]
-
-// Flexible Input Component
-function FlexibleInput({ 
-  label, 
-  value, 
-  onChange, 
-  unit, 
-  placeholder,
-  onMWSearch,
-  showMWSearch = false,
-  isCalculated = false
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  unit?: string
-  placeholder?: string
-  onMWSearch?: () => void
-  showMWSearch?: boolean
-  isCalculated?: boolean
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-sm font-medium text-slate-700">{label}</label>
-      <div className="relative">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder || (isCalculated ? 'Leave blank to calculate' : 'Enter value')}
-          className={`w-full px-3 py-2 border rounded-lg transition-colors ${
-            isCalculated 
-              ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-semibold' 
-              : 'border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'
-          } ${showMWSearch ? 'pr-20' : unit ? 'pr-16' : ''}`}
-        />
-        {showMWSearch && (
-          <button
-            onClick={onMWSearch}
-            className="absolute right-10 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600"
-            title="Search MW Database"
-          >
-            <Search className="w-4 h-4" />
-          </button>
-        )}
-        {unit && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
-            {unit}
-          </span>
-        )}
-      </div>
-      {isCalculated && <p className="text-xs text-indigo-600">← Calculated value</p>}
-    </div>
-  )
-}
-
-// Molarity Calculator with flexible inputs
-function MolarityCalculator({ 
-  onAddToProject, 
-  onMWSearch 
-}: { 
-  onAddToProject: (calc: CalculationRecord) => void
-  onMWSearch: (callback: (mw: number) => void) => void
-}) {
-  const [mass, setMass] = useState('')
-  const [molarity, setMolarity] = useState('')
-  const [volume, setVolume] = useState('')
-  const [mw, setMW] = useState('')
-  const [result, setResult] = useState<{ label: string; value: string; unit: string } | null>(null)
-
-  const calculate = () => {
-    const m = parseFloat(mass)
-    const M = parseFloat(molarity)
-    const V = parseFloat(volume)
-    const MW = parseFloat(mw)
-
-    const filled = [!isNaN(m), !isNaN(M), !isNaN(V), !isNaN(MW)]
-    const filledCount = filled.filter(Boolean).length
-
-    if (filledCount !== 3) {
-      setResult({ label: 'Error', value: 'Enter exactly 3 values', unit: '' })
-      return
-    }
-
-    let calcResult: { label: string; value: string; unit: string }
-    let equation = ''
-
-    if (isNaN(m)) {
-      // Calculate mass: mass = M × V × MW
-      const calcMass = M * V * MW
-      setMass(calcMass.toFixed(4))
-      calcResult = { label: 'Mass needed', value: calcMass.toFixed(4), unit: 'g' }
-      equation = `mass = ${M} M × ${V} L × ${MW} g/mol = ${calcMass.toFixed(4)} g`
-    } else if (isNaN(M)) {
-      // Calculate molarity: M = mass / (V × MW)
-      const calcM = m / (V * MW)
-      setMolarity(calcM.toFixed(6))
-      calcResult = { label: 'Molarity', value: calcM.toFixed(6), unit: 'M' }
-      equation = `M = ${m} g ÷ (${V} L × ${MW} g/mol) = ${calcM.toFixed(6)} M`
-    } else if (isNaN(V)) {
-      // Calculate volume: V = mass / (M × MW)
-      const calcV = m / (M * MW)
-      setVolume(calcV.toFixed(6))
-      calcResult = { label: 'Volume', value: calcV.toFixed(6), unit: 'L' }
-      equation = `V = ${m} g ÷ (${M} M × ${MW} g/mol) = ${calcV.toFixed(6)} L`
-    } else {
-      // Calculate MW: MW = mass / (M × V)
-      const calcMW = m / (M * V)
-      setMW(calcMW.toFixed(2))
-      calcResult = { label: 'Molecular Weight', value: calcMW.toFixed(2), unit: 'g/mol' }
-      equation = `MW = ${m} g ÷ (${M} M × ${V} L) = ${calcMW.toFixed(2)} g/mol`
-    }
-
-    setResult(calcResult)
-
-    // Add to project
-    onAddToProject({
-      id: Date.now().toString(),
-      calculator: 'Molarity',
-      inputs: { mass: mass || calcResult.value, molarity: molarity || calcResult.value, volume: volume || calcResult.value, mw: mw || calcResult.value },
-      result: calcResult,
-      equation,
-      timestamp: new Date()
-    })
-  }
-
-  const clear = () => {
-    setMass('')
-    setMolarity('')
-    setVolume('')
-    setMW('')
-    setResult(null)
-  }
-
-  const isCalculated = (val: string) => {
-    const filled = [mass, molarity, volume, mw].filter(v => v !== '').length
-    return filled === 3 && val === ''
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600">
-        <p className="font-medium mb-1">Equation: mass (g) = M × V × MW</p>
-        <p className="text-xs">Leave one field blank to calculate it from the other three.</p>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <FlexibleInput
-          label="Mass"
-          value={mass}
-          onChange={setMass}
-          unit="g"
-          isCalculated={isCalculated(mass)}
-        />
-        <FlexibleInput
-          label="Molarity (M)"
-          value={molarity}
-          onChange={setMolarity}
-          unit="M"
-          isCalculated={isCalculated(molarity)}
-        />
-        <FlexibleInput
-          label="Volume"
-          value={volume}
-          onChange={setVolume}
-          unit="L"
-          isCalculated={isCalculated(volume)}
-        />
-        <FlexibleInput
-          label="Molecular Weight"
-          value={mw}
-          onChange={setMW}
-          unit="g/mol"
-          showMWSearch
-          onMWSearch={() => onMWSearch((selectedMW) => setMW(selectedMW.toString()))}
-          isCalculated={isCalculated(mw)}
-        />
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={calculate}
-          className="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-colors"
-        >
-          Calculate
-        </button>
-        <button
-          onClick={clear}
-          className="px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-        >
-          Clear
-        </button>
-      </div>
-
-      {result && (
-        <div className={`p-4 rounded-lg ${result.label === 'Error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          <p className="font-medium">{result.label}: {result.value} {result.unit}</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Dilution Calculator (C1V1 = C2V2)
-function DilutionCalculator({ 
-  onAddToProject 
-}: { 
-  onAddToProject: (calc: CalculationRecord) => void 
-}) {
-  const [c1, setC1] = useState('')
-  const [v1, setV1] = useState('')
-  const [c2, setC2] = useState('')
-  const [v2, setV2] = useState('')
-  const [result, setResult] = useState<{ label: string; value: string; unit: string } | null>(null)
-
-  const calculate = () => {
-    const C1 = parseFloat(c1)
-    const V1 = parseFloat(v1)
-    const C2 = parseFloat(c2)
-    const V2 = parseFloat(v2)
-
-    const filled = [!isNaN(C1), !isNaN(V1), !isNaN(C2), !isNaN(V2)]
-    const filledCount = filled.filter(Boolean).length
-
-    if (filledCount !== 3) {
-      setResult({ label: 'Error', value: 'Enter exactly 3 values', unit: '' })
-      return
-    }
-
-    let calcResult: { label: string; value: string; unit: string }
-    let equation = ''
-
-    if (isNaN(C1)) {
-      const calc = (C2 * V2) / V1
-      setC1(calc.toFixed(6))
-      calcResult = { label: 'Stock Concentration (C₁)', value: calc.toFixed(6), unit: '' }
-      equation = `C₁ = (${C2} × ${V2}) ÷ ${V1} = ${calc.toFixed(6)}`
-    } else if (isNaN(V1)) {
-      const calc = (C2 * V2) / C1
-      setV1(calc.toFixed(6))
-      calcResult = { label: 'Stock Volume (V₁)', value: calc.toFixed(6), unit: '' }
-      equation = `V₁ = (${C2} × ${V2}) ÷ ${C1} = ${calc.toFixed(6)}`
-    } else if (isNaN(C2)) {
-      const calc = (C1 * V1) / V2
-      setC2(calc.toFixed(6))
-      calcResult = { label: 'Final Concentration (C₂)', value: calc.toFixed(6), unit: '' }
-      equation = `C₂ = (${C1} × ${V1}) ÷ ${V2} = ${calc.toFixed(6)}`
-    } else {
-      const calc = (C1 * V1) / C2
-      setV2(calc.toFixed(6))
-      calcResult = { label: 'Final Volume (V₂)', value: calc.toFixed(6), unit: '' }
-      equation = `V₂ = (${C1} × ${V1}) ÷ ${C2} = ${calc.toFixed(6)}`
-    }
-
-    setResult(calcResult)
-    onAddToProject({
-      id: Date.now().toString(),
-      calculator: 'Dilution (C₁V₁ = C₂V₂)',
-      inputs: { c1, v1, c2, v2 },
-      result: calcResult,
-      equation,
-      timestamp: new Date()
-    })
-  }
-
-  const clear = () => {
-    setC1('')
-    setV1('')
-    setC2('')
-    setV2('')
-    setResult(null)
-  }
-
-  const isCalculated = (val: string) => {
-    const filled = [c1, v1, c2, v2].filter(v => v !== '').length
-    return filled === 3 && val === ''
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600">
-        <p className="font-medium mb-1">Equation: C₁V₁ = C₂V₂</p>
-        <p className="text-xs">Leave one field blank to calculate it. Use consistent units.</p>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <FlexibleInput label="C₁ (Stock Conc.)" value={c1} onChange={setC1} isCalculated={isCalculated(c1)} />
-        <FlexibleInput label="V₁ (Stock Vol.)" value={v1} onChange={setV1} isCalculated={isCalculated(v1)} />
-        <FlexibleInput label="C₂ (Final Conc.)" value={c2} onChange={setC2} isCalculated={isCalculated(c2)} />
-        <FlexibleInput label="V₂ (Final Vol.)" value={v2} onChange={setV2} isCalculated={isCalculated(v2)} />
-      </div>
-
-      <div className="flex gap-2">
-        <button onClick={calculate} className="flex-1 bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-          Calculate
-        </button>
-        <button onClick={clear} className="px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-          Clear
-        </button>
-      </div>
-
-      {result && (
-        <div className={`p-4 rounded-lg ${result.label === 'Error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          <p className="font-medium">{result.label}: {result.value} {result.unit}</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Serial Dilution Calculator
-function SerialDilutionCalculator({ 
-  onAddToProject 
-}: { 
-  onAddToProject: (calc: CalculationRecord) => void 
-}) {
-  const [initial, setInitial] = useState('')
-  const [transfer, setTransfer] = useState('')
-  const [diluent, setDiluent] = useState('')
-  const [steps, setSteps] = useState('')
-  const [final, setFinal] = useState('')
-  const [result, setResult] = useState<{ label: string; value: string; unit: string } | null>(null)
-
-  const calculate = () => {
-    const C0 = parseFloat(initial)
-    const Vt = parseFloat(transfer)
-    const Vd = parseFloat(diluent)
-    const n = parseFloat(steps)
-    const Cf = parseFloat(final)
-
-    // Determine which is blank
-    const values = { initial: C0, transfer: Vt, diluent: Vd, steps: n, final: Cf }
-    const filled = Object.values(values).filter(v => !isNaN(v)).length
-
-    if (filled !== 4) {
-      setResult({ label: 'Error', value: 'Enter exactly 4 values', unit: '' })
-      return
-    }
-
-    let calcResult: { label: string; value: string; unit: string }
-    let equation = ''
-    const dilutionFactor = Vt / (Vt + Vd)
-
-    if (isNaN(Cf)) {
-      const calc = C0 * Math.pow(dilutionFactor, n)
-      setFinal(calc.toExponential(4))
-      calcResult = { label: 'Final Concentration', value: calc.toExponential(4), unit: '' }
-      equation = `C_final = ${C0} × (${Vt}/(${Vt}+${Vd}))^${n} = ${calc.toExponential(4)}`
-    } else if (isNaN(n)) {
-      const calc = Math.log(Cf / C0) / Math.log(dilutionFactor)
-      setSteps(Math.ceil(calc).toString())
-      calcResult = { label: 'Steps Required', value: Math.ceil(calc).toString(), unit: '' }
-      equation = `n = log(${Cf}/${C0}) / log(${dilutionFactor.toFixed(4)}) ≈ ${Math.ceil(calc)}`
-    } else if (isNaN(C0)) {
-      const calc = Cf / Math.pow(dilutionFactor, n)
-      setInitial(calc.toExponential(4))
-      calcResult = { label: 'Initial Concentration', value: calc.toExponential(4), unit: '' }
-      equation = `C_initial = ${Cf} ÷ (${dilutionFactor.toFixed(4)})^${n} = ${calc.toExponential(4)}`
-    } else {
-      setResult({ label: 'Error', value: 'Cannot solve for transfer/diluent volumes uniquely', unit: '' })
-      return
-    }
-
-    setResult(calcResult)
-    onAddToProject({
-      id: Date.now().toString(),
-      calculator: 'Serial Dilution',
-      inputs: { initial, transfer, diluent, steps, final },
-      result: calcResult,
-      equation,
-      timestamp: new Date()
-    })
-  }
-
-  const clear = () => {
-    setInitial('')
-    setTransfer('')
-    setDiluent('')
-    setSteps('')
-    setFinal('')
-    setResult(null)
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600">
-        <p className="font-medium mb-1">Equation: C_final = C_initial × (V_transfer / (V_transfer + V_diluent))ⁿ</p>
-        <p className="text-xs">Leave one field blank to calculate it (except transfer/diluent).</p>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <FlexibleInput label="Initial Concentration" value={initial} onChange={setInitial} />
-        <FlexibleInput label="Transfer Volume" value={transfer} onChange={setTransfer} unit="µL" />
-        <FlexibleInput label="Diluent Volume" value={diluent} onChange={setDiluent} unit="µL" />
-        <FlexibleInput label="Number of Steps" value={steps} onChange={setSteps} />
-        <div className="col-span-2">
-          <FlexibleInput label="Final Concentration" value={final} onChange={setFinal} />
-        </div>
-      </div>
-
-      <div className="flex gap-2">
-        <button onClick={calculate} className="flex-1 bg-cyan-600 text-white py-2.5 rounded-lg font-medium hover:bg-cyan-700 transition-colors">
-          Calculate
-        </button>
-        <button onClick={clear} className="px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-          Clear
-        </button>
-      </div>
-
-      {result && (
-        <div className={`p-4 rounded-lg ${result.label === 'Error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          <p className="font-medium">{result.label}: {result.value} {result.unit}</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Percent Solution Calculator
-function PercentSolutionCalculator({ 
-  onAddToProject 
-}: { 
-  onAddToProject: (calc: CalculationRecord) => void 
-}) {
-  const [solute, setSolute] = useState('')
-  const [volume, setVolume] = useState('')
-  const [percent, setPercent] = useState('')
-  const [type, setType] = useState<'w/v' | 'v/v'>('w/v')
-  const [result, setResult] = useState<{ label: string; value: string; unit: string } | null>(null)
-
-  const calculate = () => {
-    const S = parseFloat(solute)
-    const V = parseFloat(volume)
-    const P = parseFloat(percent)
-
-    const filled = [!isNaN(S), !isNaN(V), !isNaN(P)].filter(Boolean).length
-
-    if (filled !== 2) {
-      setResult({ label: 'Error', value: 'Enter exactly 2 values', unit: '' })
-      return
-    }
-
-    let calcResult: { label: string; value: string; unit: string }
-    let equation = ''
-    const soluteUnit = type === 'w/v' ? 'g' : 'mL'
-
-    if (isNaN(S)) {
-      const calc = (P / 100) * V
-      setSolute(calc.toFixed(4))
-      calcResult = { label: `Solute needed`, value: calc.toFixed(4), unit: soluteUnit }
-      equation = `Solute = (${P}% / 100) × ${V} mL = ${calc.toFixed(4)} ${soluteUnit}`
-    } else if (isNaN(V)) {
-      const calc = S / (P / 100)
-      setVolume(calc.toFixed(4))
-      calcResult = { label: 'Final Volume', value: calc.toFixed(4), unit: 'mL' }
-      equation = `Volume = ${S} ${soluteUnit} ÷ (${P}% / 100) = ${calc.toFixed(4)} mL`
-    } else {
-      const calc = (S / V) * 100
-      setPercent(calc.toFixed(4))
-      calcResult = { label: 'Percent', value: calc.toFixed(4), unit: `% ${type}` }
-      equation = `% = (${S} ${soluteUnit} / ${V} mL) × 100 = ${calc.toFixed(4)}%`
-    }
-
-    setResult(calcResult)
-    onAddToProject({
-      id: Date.now().toString(),
-      calculator: `Percent Solution (${type})`,
-      inputs: { solute, volume, percent, type },
-      result: calcResult,
-      equation,
-      timestamp: new Date()
-    })
-  }
-
-  const clear = () => {
-    setSolute('')
-    setVolume('')
-    setPercent('')
-    setResult(null)
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600">
-        <p className="font-medium mb-1">Equation: % = (solute / volume) × 100</p>
-        <p className="text-xs">Leave one field blank to calculate it.</p>
-      </div>
-
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setType('w/v')}
-          className={`flex-1 py-2 rounded-lg font-medium transition-colors ${type === 'w/v' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-        >
-          Weight/Volume (w/v)
-        </button>
-        <button
-          onClick={() => setType('v/v')}
-          className={`flex-1 py-2 rounded-lg font-medium transition-colors ${type === 'v/v' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-        >
-          Volume/Volume (v/v)
-        </button>
-      </div>
-      
-      <div className="grid grid-cols-1 gap-4">
-        <FlexibleInput label={type === 'w/v' ? 'Solute Mass' : 'Solute Volume'} value={solute} onChange={setSolute} unit={type === 'w/v' ? 'g' : 'mL'} />
-        <FlexibleInput label="Final Volume" value={volume} onChange={setVolume} unit="mL" />
-        <FlexibleInput label="Percent" value={percent} onChange={setPercent} unit={`% ${type}`} />
-      </div>
-
-      <div className="flex gap-2">
-        <button onClick={calculate} className="flex-1 bg-emerald-600 text-white py-2.5 rounded-lg font-medium hover:bg-emerald-700 transition-colors">
-          Calculate
-        </button>
-        <button onClick={clear} className="px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-          Clear
-        </button>
-      </div>
-
-      {result && (
-        <div className={`p-4 rounded-lg ${result.label === 'Error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          <p className="font-medium">{result.label}: {result.value} {result.unit}</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Unit Converter Calculator
-function UnitConverterCalculator({ 
-  onAddToProject,
-  onMWSearch
-}: { 
-  onAddToProject: (calc: CalculationRecord) => void
-  onMWSearch: (callback: (mw: number) => void) => void
-}) {
-  const [mode, setMode] = useState<'mgToM' | 'MToMg' | 'ppm'>('mgToM')
-  const [value, setValue] = useState('')
-  const [mw, setMW] = useState('')
-  const [result, setResult] = useState<{ label: string; value: string; unit: string } | null>(null)
-
-  const calculate = () => {
-    const V = parseFloat(value)
-    const MW = parseFloat(mw)
-
-    if (isNaN(V)) {
-      setResult({ label: 'Error', value: 'Enter a value', unit: '' })
-      return
-    }
-
-    let calcResult: { label: string; value: string; unit: string }
-    let equation = ''
-
-    if (mode === 'ppm') {
-      calcResult = { label: 'Result', value: V.toString(), unit: 'mg/L' }
-      equation = `${V} ppm = ${V} mg/L (1:1 conversion)`
-    } else if (mode === 'mgToM') {
-      if (isNaN(MW)) {
-        setResult({ label: 'Error', value: 'MW required', unit: '' })
-        return
-      }
-      const calc = (V / MW) * 1000
-      calcResult = { label: 'Molarity', value: calc.toFixed(6), unit: 'mM' }
-      equation = `M = (${V} mg/mL ÷ ${MW}) × 1000 = ${calc.toFixed(6)} mM`
-    } else {
-      if (isNaN(MW)) {
-        setResult({ label: 'Error', value: 'MW required', unit: '' })
-        return
-      }
-      const calc = (V * MW) / 1000
-      calcResult = { label: 'Concentration', value: calc.toFixed(6), unit: 'mg/mL' }
-      equation = `mg/mL = (${V} M × ${MW}) ÷ 1000 = ${calc.toFixed(6)} mg/mL`
-    }
-
-    setResult(calcResult)
-    onAddToProject({
-      id: Date.now().toString(),
-      calculator: 'Unit Converter',
-      inputs: { value, mw, mode },
-      result: calcResult,
-      equation,
-      timestamp: new Date()
-    })
-  }
-
-  const clear = () => {
-    setValue('')
-    setMW('')
-    setResult(null)
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
-        {[
-          { id: 'mgToM', label: 'mg/mL → M' },
-          { id: 'MToMg', label: 'M → mg/mL' },
-          { id: 'ppm', label: 'ppm → mg/L' },
-        ].map((m) => (
-          <button
-            key={m.id}
-            onClick={() => setMode(m.id as typeof mode)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${mode === m.id ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-      
-      <div className="grid grid-cols-1 gap-4">
-        <FlexibleInput 
-          label={mode === 'mgToM' ? 'Concentration (mg/mL)' : mode === 'MToMg' ? 'Molarity (M)' : 'PPM'} 
-          value={value} 
-          onChange={setValue} 
-        />
-        {mode !== 'ppm' && (
-          <FlexibleInput 
-            label="Molecular Weight" 
-            value={mw} 
-            onChange={setMW} 
-            unit="g/mol"
-            showMWSearch
-            onMWSearch={() => onMWSearch((selectedMW) => setMW(selectedMW.toString()))}
-          />
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <button onClick={calculate} className="flex-1 bg-amber-600 text-white py-2.5 rounded-lg font-medium hover:bg-amber-700 transition-colors">
-          Convert
-        </button>
-        <button onClick={clear} className="px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-          Clear
-        </button>
-      </div>
-
-      {result && (
-        <div className={`p-4 rounded-lg ${result.label === 'Error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          <p className="font-medium">{result.label}: {result.value} {result.unit}</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Stock Solution Calculator
-function StockSolutionCalculator({ 
-  onAddToProject,
-  onMWSearch
-}: { 
-  onAddToProject: (calc: CalculationRecord) => void
-  onMWSearch: (callback: (mw: number) => void) => void
-}) {
-  const [molarity, setMolarity] = useState('')
-  const [volume, setVolume] = useState('')
-  const [mw, setMW] = useState('')
-  const [mass, setMass] = useState('')
-  const [result, setResult] = useState<{ label: string; value: string; unit: string } | null>(null)
-
-  const calculate = () => {
-    const M = parseFloat(molarity)
-    const V = parseFloat(volume)
-    const MW = parseFloat(mw)
-    const m = parseFloat(mass)
-
-    const filled = [!isNaN(M), !isNaN(V), !isNaN(MW), !isNaN(m)].filter(Boolean).length
-
-    if (filled !== 3) {
-      setResult({ label: 'Error', value: 'Enter exactly 3 values', unit: '' })
-      return
-    }
-
-    let calcResult: { label: string; value: string; unit: string }
-    let equation = ''
-
-    if (isNaN(m)) {
-      const calc = M * (V / 1000) * MW
-      setMass(calc.toFixed(4))
-      calcResult = { label: 'Mass needed', value: calc.toFixed(4), unit: 'g' }
-      equation = `mass = ${M} M × ${V / 1000} L × ${MW} g/mol = ${calc.toFixed(4)} g`
-    } else if (isNaN(M)) {
-      const calc = m / ((V / 1000) * MW)
-      setMolarity(calc.toFixed(6))
-      calcResult = { label: 'Stock Molarity', value: calc.toFixed(6), unit: 'M' }
-      equation = `M = ${m} g ÷ (${V / 1000} L × ${MW}) = ${calc.toFixed(6)} M`
-    } else if (isNaN(V)) {
-      const calc = (m / (M * MW)) * 1000
-      setVolume(calc.toFixed(4))
-      calcResult = { label: 'Volume', value: calc.toFixed(4), unit: 'mL' }
-      equation = `V = (${m} g ÷ (${M} M × ${MW})) × 1000 = ${calc.toFixed(4)} mL`
-    } else {
-      const calc = m / (M * (V / 1000))
-      setMW(calc.toFixed(2))
-      calcResult = { label: 'Molecular Weight', value: calc.toFixed(2), unit: 'g/mol' }
-      equation = `MW = ${m} g ÷ (${M} M × ${V / 1000} L) = ${calc.toFixed(2)} g/mol`
-    }
-
-    setResult(calcResult)
-    onAddToProject({
-      id: Date.now().toString(),
-      calculator: 'Stock Solution',
-      inputs: { molarity, volume, mw, mass },
-      result: calcResult,
-      equation,
-      timestamp: new Date()
-    })
-  }
-
-  const clear = () => {
-    setMolarity('')
-    setVolume('')
-    setMW('')
-    setMass('')
-    setResult(null)
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600">
-        <p className="font-medium mb-1">Equation: mass (g) = M × V(L) × MW</p>
-        <p className="text-xs">Leave one field blank to calculate it.</p>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <FlexibleInput label="Stock Molarity" value={molarity} onChange={setMolarity} unit="M" />
-        <FlexibleInput label="Volume" value={volume} onChange={setVolume} unit="mL" />
-        <FlexibleInput 
-          label="Molecular Weight" 
-          value={mw} 
-          onChange={setMW} 
-          unit="g/mol"
-          showMWSearch
-          onMWSearch={() => onMWSearch((selectedMW) => setMW(selectedMW.toString()))}
-        />
-        <FlexibleInput label="Mass" value={mass} onChange={setMass} unit="g" />
-      </div>
-
-      <div className="flex gap-2">
-        <button onClick={calculate} className="flex-1 bg-orange-600 text-white py-2.5 rounded-lg font-medium hover:bg-orange-700 transition-colors">
-          Calculate
-        </button>
-        <button onClick={clear} className="px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-          Clear
-        </button>
-      </div>
-
-      {result && (
-        <div className={`p-4 rounded-lg ${result.label === 'Error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          <p className="font-medium">{result.label}: {result.value} {result.unit}</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Buffer Calculator (Henderson-Hasselbalch)
-function BufferCalculator({ 
-  onAddToProject 
-}: { 
-  onAddToProject: (calc: CalculationRecord) => void 
-}) {
-  const [ph, setPH] = useState('')
-  const [pka, setPKA] = useState('')
-  const [base, setBase] = useState('')
-  const [acid, setAcid] = useState('')
-  const [result, setResult] = useState<{ label: string; value: string; unit: string } | null>(null)
-
-  const calculate = () => {
-    const pH = parseFloat(ph)
-    const pKa = parseFloat(pka)
-    const A = parseFloat(base)
-    const HA = parseFloat(acid)
-
-    const filled = [!isNaN(pH), !isNaN(pKa), !isNaN(A), !isNaN(HA)].filter(Boolean).length
-
-    if (filled !== 3) {
-      setResult({ label: 'Error', value: 'Enter exactly 3 values', unit: '' })
-      return
-    }
-
-    let calcResult: { label: string; value: string; unit: string }
-    let equation = ''
-
-    if (isNaN(pH)) {
-      const calc = pKa + Math.log10(A / HA)
-      setPH(calc.toFixed(4))
-      calcResult = { label: 'pH', value: calc.toFixed(4), unit: '' }
-      equation = `pH = ${pKa} + log(${A}/${HA}) = ${calc.toFixed(4)}`
-    } else if (isNaN(pKa)) {
-      const calc = pH - Math.log10(A / HA)
-      setPKA(calc.toFixed(4))
-      calcResult = { label: 'pKa', value: calc.toFixed(4), unit: '' }
-      equation = `pKa = ${pH} - log(${A}/${HA}) = ${calc.toFixed(4)}`
-    } else if (isNaN(A)) {
-      const calc = HA * Math.pow(10, pH - pKa)
-      setBase(calc.toFixed(4))
-      calcResult = { label: '[A⁻] (Base)', value: calc.toFixed(4), unit: 'M' }
-      equation = `[A⁻] = ${HA} × 10^(${pH}-${pKa}) = ${calc.toFixed(4)} M`
-    } else {
-      const calc = A / Math.pow(10, pH - pKa)
-      setAcid(calc.toFixed(4))
-      calcResult = { label: '[HA] (Acid)', value: calc.toFixed(4), unit: 'M' }
-      equation = `[HA] = ${A} ÷ 10^(${pH}-${pKa}) = ${calc.toFixed(4)} M`
-    }
-
-    setResult(calcResult)
-    onAddToProject({
-      id: Date.now().toString(),
-      calculator: 'Buffer (Henderson-Hasselbalch)',
-      inputs: { ph, pka, base, acid },
-      result: calcResult,
-      equation,
-      timestamp: new Date()
-    })
-  }
-
-  const clear = () => {
-    setPH('')
-    setPKA('')
-    setBase('')
-    setAcid('')
-    setResult(null)
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600">
-        <p className="font-medium mb-1">Henderson-Hasselbalch: pH = pKa + log([A⁻]/[HA])</p>
-        <p className="text-xs">Leave one field blank to calculate it.</p>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <FlexibleInput label="pH" value={ph} onChange={setPH} />
-        <FlexibleInput label="pKa" value={pka} onChange={setPKA} />
-        <FlexibleInput label="[A⁻] Base Conc." value={base} onChange={setBase} unit="M" />
-        <FlexibleInput label="[HA] Acid Conc." value={acid} onChange={setAcid} unit="M" />
-      </div>
-
-      <div className="flex gap-2">
-        <button onClick={calculate} className="flex-1 bg-purple-600 text-white py-2.5 rounded-lg font-medium hover:bg-purple-700 transition-colors">
-          Calculate
-        </button>
-        <button onClick={clear} className="px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-          Clear
-        </button>
-      </div>
-
-      {result && (
-        <div className={`p-4 rounded-lg ${result.label === 'Error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          <p className="font-medium">{result.label}: {result.value} {result.unit}</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Osmolarity Calculator
-function OsmolarityCalculator({ 
-  onAddToProject 
-}: { 
-  onAddToProject: (calc: CalculationRecord) => void 
-}) {
-  const [molarity, setMolarity] = useState('')
-  const [particles, setParticles] = useState('')
-  const [osmolarity, setOsmolarity] = useState('')
-  const [result, setResult] = useState<{ label: string; value: string; unit: string } | null>(null)
-
-  const calculate = () => {
-    const M = parseFloat(molarity)
-    const i = parseFloat(particles)
-    const Osm = parseFloat(osmolarity)
-
-    const filled = [!isNaN(M), !isNaN(i), !isNaN(Osm)].filter(Boolean).length
-
-    if (filled !== 2) {
-      setResult({ label: 'Error', value: 'Enter exactly 2 values', unit: '' })
-      return
-    }
-
-    let calcResult: { label: string; value: string; unit: string }
-    let equation = ''
-
-    if (isNaN(Osm)) {
-      const calc = M * i
-      setOsmolarity(calc.toFixed(4))
-      calcResult = { label: 'Osmolarity', value: calc.toFixed(4), unit: 'Osm' }
-      equation = `Osm = ${M} M × ${i} = ${calc.toFixed(4)} Osm`
-    } else if (isNaN(M)) {
-      const calc = Osm / i
-      setMolarity(calc.toFixed(6))
-      calcResult = { label: 'Molarity', value: calc.toFixed(6), unit: 'M' }
-      equation = `M = ${Osm} Osm ÷ ${i} = ${calc.toFixed(6)} M`
-    } else {
-      const calc = Osm / M
-      setParticles(calc.toFixed(2))
-      calcResult = { label: 'Dissociation Factor (i)', value: calc.toFixed(2), unit: '' }
-      equation = `i = ${Osm} Osm ÷ ${M} M = ${calc.toFixed(2)}`
-    }
-
-    setResult(calcResult)
-    onAddToProject({
-      id: Date.now().toString(),
-      calculator: 'Osmolarity',
-      inputs: { molarity, particles, osmolarity },
-      result: calcResult,
-      equation,
-      timestamp: new Date()
-    })
-  }
-
-  const clear = () => {
-    setMolarity('')
-    setParticles('')
-    setOsmolarity('')
-    setResult(null)
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600">
-        <p className="font-medium mb-1">Equation: Osmolarity = M × i</p>
-        <p className="text-xs">Where i = number of particles on dissociation. Leave one field blank.</p>
-      </div>
-      
-      <div className="grid grid-cols-1 gap-4">
-        <FlexibleInput label="Molarity" value={molarity} onChange={setMolarity} unit="M" />
-        <FlexibleInput label="Dissociation Factor (i)" value={particles} onChange={setParticles} placeholder="e.g., NaCl=2, CaCl₂=3" />
-        <FlexibleInput label="Osmolarity" value={osmolarity} onChange={setOsmolarity} unit="Osm" />
-      </div>
-
-      <div className="flex gap-2">
-        <button onClick={calculate} className="flex-1 bg-rose-600 text-white py-2.5 rounded-lg font-medium hover:bg-rose-700 transition-colors">
-          Calculate
-        </button>
-        <button onClick={clear} className="px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-          Clear
-        </button>
-      </div>
-
-      {result && (
-        <div className={`p-4 rounded-lg ${result.label === 'Error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          <p className="font-medium">{result.label}: {result.value} {result.unit}</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// MW Search Modal
-function MWSearchModal({ 
-  isOpen, 
-  onClose, 
-  onSelect 
-}: { 
-  isOpen: boolean
-  onClose: () => void
-  onSelect: (mw: number) => void 
-}) {
-  const [search, setSearch] = useState('')
-  const [copied, setCopied] = useState<string | null>(null)
-
-  const filtered = useMemo(() => {
-    if (!search) return compounds
-    const s = search.toLowerCase()
-    return compounds.filter(c => 
-      c.name.toLowerCase().includes(s) || 
-      c.formula.toLowerCase().includes(s) ||
-      c.category.toLowerCase().includes(s)
-    )
-  }, [search])
-
-  const grouped = useMemo(() => {
-    return filtered.reduce((acc, c) => {
-      if (!acc[c.category]) acc[c.category] = []
-      acc[c.category].push(c)
-      return acc
-    }, {} as Record<string, Compound[]>)
-  }, [filtered])
-
-  const handleSelect = (c: Compound) => {
-    onSelect(c.mw)
-    setCopied(c.name)
-    setTimeout(() => {
-      setCopied(null)
-      onClose()
-    }, 500)
-  }
-
-  if (!isOpen) return null
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex items-center gap-3">
-          <Search className="w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search compounds by name, formula, or category..."
-            className="flex-1 outline-none text-lg"
-            autoFocus
-          />
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="overflow-y-auto max-h-[60vh] p-4">
-          {Object.entries(grouped).map(([category, items]) => (
-            <div key={category} className="mb-4">
-              <h3 className="text-sm font-semibold text-slate-500 mb-2">{category}</h3>
-              <div className="space-y-1">
-                {items.map((c) => (
-                  <button
-                    key={c.name}
-                    onClick={() => handleSelect(c)}
-                    className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-indigo-50 transition-colors text-left"
-                  >
-                    <div>
-                      <span className="font-medium text-slate-800">{c.name}</span>
-                      <span className="ml-2 text-sm text-slate-500">{c.formula}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-indigo-600">{c.mw.toLocaleString()}</span>
-                      {copied === c.name ? (
-                        <Check className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <Copy className="w-4 h-4 text-slate-400" />
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-          {filtered.length === 0 && (
-            <p className="text-center text-slate-500 py-8">No compounds found</p>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Project Panel
-function ProjectPanel({ 
-  projects, 
-  activeProject, 
-  onSelectProject, 
-  onCreateProject, 
-  onDeleteProject,
-  onExportPDF,
-  onRemoveCalculation 
-}: {
-  projects: Project[]
-  activeProject: Project | null
-  onSelectProject: (id: string | null) => void
-  onCreateProject: (name: string) => void
-  onDeleteProject: (id: string) => void
-  onExportPDF: (project: Project) => void
-  onRemoveCalculation: (projectId: string, calcId: string) => void
-}) {
-  const [newName, setNewName] = useState('')
-  const [showForm, setShowForm] = useState(false)
-
-  const handleCreate = () => {
-    if (newName.trim()) {
-      onCreateProject(newName.trim())
-      setNewName('')
-      setShowForm(false)
-    }
-  }
-
-  return (
-    <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-      <div className="p-4 bg-gradient-to-r from-slate-800 to-slate-700 text-white">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Folder className="w-5 h-5" />
-            <h2 className="font-semibold">Projects</h2>
-          </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-          >
-            <FolderPlus className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
-      {showForm && (
-        <div className="p-3 border-b border-slate-200 bg-slate-50">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Project name..."
-              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-            />
-            <button
-              onClick={handleCreate}
-              className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
-            >
-              Create
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="divide-y divide-slate-100">
-        <button
-          onClick={() => onSelectProject(null)}
-          className={`w-full p-3 text-left flex items-center gap-2 hover:bg-slate-50 transition-colors ${!activeProject ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
-        >
-          <Calculator className="w-4 h-4" />
-          <span className="text-sm font-medium">Quick Calculations</span>
-          <span className="ml-auto text-xs text-slate-500">(no project)</span>
-        </button>
-
-        {projects.map((p) => (
-          <div key={p.id} className={`${activeProject?.id === p.id ? 'bg-indigo-50' : ''}`}>
-            <button
-              onClick={() => onSelectProject(p.id)}
-              className={`w-full p-3 text-left flex items-center gap-2 hover:bg-slate-50 transition-colors ${activeProject?.id === p.id ? 'text-indigo-700' : 'text-slate-700'}`}
-            >
-              <FolderOpen className="w-4 h-4" />
-              <span className="text-sm font-medium flex-1">{p.name}</span>
-              <span className="text-xs text-slate-500">{p.calculations.length} calcs</span>
-            </button>
-            
-            {activeProject?.id === p.id && (
-              <div className="px-3 pb-3">
-                <div className="flex gap-2 mb-2">
-                  <button
-                    onClick={() => onExportPDF(p)}
-                    disabled={p.calculations.length === 0}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Export PDF
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm('Delete this project?')) onDeleteProject(p.id)
-                    }}
-                    className="px-3 py-1.5 border border-red-300 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {p.calculations.length > 0 && (
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {p.calculations.map((calc) => (
-                      <div key={calc.id} className="flex items-center gap-2 p-2 bg-white rounded border border-slate-200 text-xs">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-slate-700 truncate">{calc.calculator}</p>
-                          <p className="text-slate-500 truncate">{calc.result.label}: {calc.result.value} {calc.result.unit}</p>
-                        </div>
-                        <button
-                          onClick={() => onRemoveCalculation(p.id, calc.id)}
-                          className="p-1 text-slate-400 hover:text-red-500"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// Main Component
 export default function LabCalculationsSuite() {
-  const [activeCalc, setActiveCalc] = useState('molarity')
-  const [projects, setProjects] = useState<Project[]>([])
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
-  const [mwModalOpen, setMWModalOpen] = useState(false)
-  const [mwCallback, setMWCallback] = useState<((mw: number) => void) | null>(null)
-  const [showHistory, setShowHistory] = useState(false)
-  const [recentCalcs, setRecentCalcs] = useState<CalculationRecord[]>([])
+  const [activeTab, setActiveTab] = useState<CalculatorTab>('molarity');
+  const [history, setHistory] = useState<CalculationHistory[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showMWDatabase, setShowMWDatabase] = useState(false);
+  const [mwSearch, setMwSearch] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  
+  // Projects feature
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [showProjects, setShowProjects] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
 
-  // Load from localStorage
+  // Load projects from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('labcalcs-projects')
+    const saved = localStorage.getItem('labcalcs-projects');
     if (saved) {
-      const parsed = JSON.parse(saved)
+      const parsed = JSON.parse(saved);
       setProjects(parsed.map((p: Project) => ({
         ...p,
         createdAt: new Date(p.createdAt),
         updatedAt: new Date(p.updatedAt),
-        calculations: p.calculations.map(c => ({
+        calculations: p.calculations.map((c: CalculationHistory) => ({
           ...c,
           timestamp: new Date(c.timestamp)
         }))
-      })))
+      })));
     }
-    const recent = localStorage.getItem('labcalcs-recent')
-    if (recent) {
-      setRecentCalcs(JSON.parse(recent).map((c: CalculationRecord) => ({
-        ...c,
-        timestamp: new Date(c.timestamp)
-      })))
+  }, []);
+
+  // Save projects to localStorage
+  useEffect(() => {
+    localStorage.setItem('labcalcs-projects', JSON.stringify(projects));
+  }, [projects]);
+
+  const activeProject = projects.find(p => p.id === activeProjectId) || null;
+
+  const addToHistory = (type: CalculatorTab, inputs: Record<string, string | number>, result: string, equation?: string) => {
+    const entry: CalculationHistory = {
+      id: crypto.randomUUID(),
+      type,
+      timestamp: new Date(),
+      inputs,
+      result,
+      equation,
+    };
+    setHistory(prev => [entry, ...prev].slice(0, 50));
+    
+    // Also add to active project if one is selected
+    if (activeProjectId) {
+      setProjects(prev => prev.map(p => 
+        p.id === activeProjectId 
+          ? { ...p, calculations: [...p.calculations, entry], updatedAt: new Date() }
+          : p
+      ));
     }
-  }, [])
+  };
 
-  // Save to localStorage
-  useEffect(() => {
-    localStorage.setItem('labcalcs-projects', JSON.stringify(projects))
-  }, [projects])
-
-  useEffect(() => {
-    localStorage.setItem('labcalcs-recent', JSON.stringify(recentCalcs.slice(0, 50)))
-  }, [recentCalcs])
-
-  const activeProject = projects.find(p => p.id === activeProjectId) || null
-
-  const handleCreateProject = (name: string) => {
+  const createProject = () => {
+    if (!newProjectName.trim()) return;
     const newProject: Project = {
-      id: Date.now().toString(),
-      name,
+      id: crypto.randomUUID(),
+      name: newProjectName.trim(),
       calculations: [],
       createdAt: new Date(),
-      updatedAt: new Date()
-    }
-    setProjects([...projects, newProject])
-    setActiveProjectId(newProject.id)
-  }
+      updatedAt: new Date(),
+    };
+    setProjects(prev => [...prev, newProject]);
+    setActiveProjectId(newProject.id);
+    setNewProjectName('');
+  };
 
-  const handleDeleteProject = (id: string) => {
-    setProjects(projects.filter(p => p.id !== id))
-    if (activeProjectId === id) setActiveProjectId(null)
-  }
+  const deleteProject = (id: string) => {
+    setProjects(prev => prev.filter(p => p.id !== id));
+    if (activeProjectId === id) setActiveProjectId(null);
+  };
 
-  const handleAddToProject = (calc: CalculationRecord) => {
-    if (activeProjectId) {
-      setProjects(projects.map(p => 
-        p.id === activeProjectId 
-          ? { ...p, calculations: [...p.calculations, calc], updatedAt: new Date() }
-          : p
-      ))
-    }
-    setRecentCalcs([calc, ...recentCalcs].slice(0, 50))
-  }
-
-  const handleRemoveCalculation = (projectId: string, calcId: string) => {
-    setProjects(projects.map(p => 
+  const removeCalculationFromProject = (projectId: string, calcId: string) => {
+    setProjects(prev => prev.map(p => 
       p.id === projectId 
         ? { ...p, calculations: p.calculations.filter(c => c.id !== calcId), updatedAt: new Date() }
         : p
-    ))
-  }
+    ));
+  };
 
-  const handleMWSearch = (callback: (mw: number) => void) => {
-    setMWCallback(() => callback)
-    setMWModalOpen(true)
-  }
-
-  const handleMWSelect = (mw: number) => {
-    if (mwCallback) {
-      mwCallback(mw)
-      setMWCallback(null)
-    }
-    setMWModalOpen(false)
-  }
-
-  const handleExportPDF = (project: Project) => {
-    const doc = new jsPDF()
-    const pageWidth = doc.internal.pageSize.getWidth()
-    let y = 20
+  const exportProjectPDF = (project: Project) => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 20;
 
     // Header
-    doc.setFillColor(30, 41, 59)
-    doc.rect(0, 0, pageWidth, 40, 'F')
+    doc.setFillColor(30, 41, 59);
+    doc.rect(0, 0, pageWidth, 40, 'F');
     
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(20)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Laboratory Calculations Report', pageWidth / 2, 18, { align: 'center' })
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Laboratory Calculations Report', pageWidth / 2, 18, { align: 'center' });
     
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'normal')
-    doc.text(project.name, pageWidth / 2, 28, { align: 'center' })
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(project.name, pageWidth / 2, 28, { align: 'center' });
     
-    doc.setFontSize(10)
-    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, 36, { align: 'center' })
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, 36, { align: 'center' });
 
-    y = 55
-    doc.setTextColor(30, 41, 59)
+    y = 55;
+    doc.setTextColor(30, 41, 59);
 
     // Summary
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Summary', 20, y)
-    y += 8
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Summary', 20, y);
+    y += 8;
     
-    doc.setFontSize(10)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Total Calculations: ${project.calculations.length}`, 20, y)
-    y += 5
-    doc.text(`Project Created: ${project.createdAt.toLocaleDateString()}`, 20, y)
-    y += 15
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total Calculations: ${project.calculations.length}`, 20, y);
+    y += 5;
+    doc.text(`Project Created: ${project.createdAt.toLocaleDateString()}`, 20, y);
+    y += 15;
 
     // Calculations
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Calculations', 20, y)
-    y += 10
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Calculations', 20, y);
+    y += 10;
 
     project.calculations.forEach((calc, i) => {
       if (y > 260) {
-        doc.addPage()
-        y = 20
+        doc.addPage();
+        y = 20;
       }
 
-      // Calculation box
-      doc.setFillColor(248, 250, 252)
-      doc.rect(15, y - 5, pageWidth - 30, 35, 'F')
-      doc.setDrawColor(226, 232, 240)
-      doc.rect(15, y - 5, pageWidth - 30, 35, 'S')
+      doc.setFillColor(248, 250, 252);
+      doc.rect(15, y - 5, pageWidth - 30, calc.equation ? 40 : 30, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(15, y - 5, pageWidth - 30, calc.equation ? 40 : 30, 'S');
 
-      doc.setFontSize(11)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(30, 41, 59)
-      doc.text(`${i + 1}. ${calc.calculator}`, 20, y + 3)
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 41, 59);
+      doc.text(`${i + 1}. ${calc.type.charAt(0).toUpperCase() + calc.type.slice(1)}`, 20, y + 3);
 
-      doc.setFontSize(10)
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(71, 85, 105)
-      doc.text(`Result: ${calc.result.label} = ${calc.result.value} ${calc.result.unit}`, 20, y + 12)
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Result: ${calc.result}`, 20, y + 12);
       
-      doc.setFontSize(9)
-      doc.setTextColor(100, 116, 139)
-      const eqLines = doc.splitTextToSize(`Equation: ${calc.equation}`, pageWidth - 50)
-      doc.text(eqLines, 20, y + 21)
+      if (calc.equation) {
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        const eqLines = doc.splitTextToSize(`Equation: ${calc.equation}`, pageWidth - 50);
+        doc.text(eqLines, 20, y + 21);
+        y += 47;
+      } else {
+        y += 37;
+      }
+    });
 
-      y += 42
-    })
-
-    // Footer on last page
-    const pageCount = doc.getNumberOfPages()
+    // Footer
+    const pageCount = doc.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i)
-      doc.setFontSize(8)
-      doc.setTextColor(148, 163, 184)
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
       doc.text(
         `Page ${i} of ${pageCount} | Dr Thomas Stevenson Laboratory Calculations Suite`,
         pageWidth / 2,
         doc.internal.pageSize.getHeight() - 10,
         { align: 'center' }
-      )
+      );
     }
 
-    doc.save(`${project.name.replace(/\s+/g, '_')}_calculations.pdf`)
-  }
+    doc.save(`${project.name.replace(/\s+/g, '_')}_calculations.pdf`);
+  };
 
-  const currentCalc = calculators.find(c => c.id === activeCalc)!
+  const copyToClipboard = async (text: string, id: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
-  const renderCalculator = () => {
-    const props = { onAddToProject: handleAddToProject }
-    const mwProps = { ...props, onMWSearch: handleMWSearch }
+  const filteredMW = useMemo(() => {
+    if (!mwSearch) return Object.entries(MOLECULAR_WEIGHTS);
+    const search = mwSearch.toLowerCase();
+    return Object.entries(MOLECULAR_WEIGHTS).filter(
+      ([key, val]) => 
+        key.includes(search) || 
+        val.name.toLowerCase().includes(search) ||
+        val.formula.toLowerCase().includes(search)
+    );
+  }, [mwSearch]);
 
-    switch (activeCalc) {
-      case 'molarity': return <MolarityCalculator {...mwProps} />
-      case 'dilution': return <DilutionCalculator {...props} />
-      case 'serial': return <SerialDilutionCalculator {...props} />
-      case 'percent': return <PercentSolutionCalculator {...props} />
-      case 'convert': return <UnitConverterCalculator {...mwProps} />
-      case 'stock': return <StockSolutionCalculator {...mwProps} />
-      case 'buffer': return <BufferCalculator {...props} />
-      case 'osmolarity': return <OsmolarityCalculator {...props} />
-      default: return null
-    }
-  }
+  const tabs: { id: CalculatorTab; label: string; icon: string }[] = [
+    { id: 'molarity', label: 'Molarity', icon: 'M' },
+    { id: 'dilution', label: 'Dilution', icon: 'C₁V₁' },
+    { id: 'serial', label: 'Serial', icon: '∿' },
+    { id: 'percent', label: 'Percent', icon: '%' },
+    { id: 'conversion', label: 'Convert', icon: '⇄' },
+    { id: 'stock', label: 'Stock', icon: 'S' },
+    { id: 'buffer', label: 'Buffer', icon: 'pH' },
+    { id: 'osmolarity', label: 'Osm', icon: 'Ω' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-indigo-50">
+    <div className="min-h-screen bg-slate-50 text-slate-900 antialiased selection:bg-amber-500/30">
       {/* Header */}
-      <header className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-900 text-white shadow-xl">
-        <div className="max-w-7xl mx-auto px-4 py-6">
+      <header className="relative border-b border-slate-200 bg-white">
+        <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/10 rounded-xl backdrop-blur">
-                <FlaskConical className="w-8 h-8" />
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
+                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                  </svg>
+                </div>
+                <h1 className="text-2xl font-light tracking-tight">
+                  <span className="font-semibold text-slate-900">Dr Thomas Stevenson</span>
+                </h1>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">Laboratory Calculations Suite</h1>
-                <p className="text-slate-300 text-sm">Dr Thomas Stevenson</p>
-              </div>
+              <p className="text-sm text-slate-500 tracking-wide uppercase">Laboratory Calculations Suite</p>
             </div>
-            <div className="flex items-center gap-2">
+            
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => setMWModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                onClick={() => setShowProjects(!showProjects)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                showProjects 
+                    ? 'bg-amber-50 text-amber-600 border border-amber-200' 
+                    : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300'
+                }`}
               >
-                <Database className="w-4 h-4" />
-                <span className="text-sm font-medium">MW Database</span>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                </svg>
+                Projects {activeProject && `(${activeProject.name})`}
+              </button>
+              <button
+                onClick={() => setShowMWDatabase(!showMWDatabase)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                showMWDatabase 
+                    ? 'bg-amber-50 text-amber-600 border border-amber-200' 
+                    : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                </svg>
+                MW Database
               </button>
               <button
                 onClick={() => setShowHistory(!showHistory)}
-                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                showHistory 
+                    ? 'bg-amber-50 text-amber-600 border border-amber-200' 
+                    : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300'
+                }`}
               >
-                <History className="w-4 h-4" />
-                <span className="text-sm font-medium">History</span>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                History ({history.length})
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid lg:grid-cols-4 gap-6">
-          {/* Sidebar - Projects */}
-          <div className="lg:col-span-1 space-y-4">
-            <ProjectPanel
-              projects={projects}
-              activeProject={activeProject}
-              onSelectProject={setActiveProjectId}
-              onCreateProject={handleCreateProject}
-              onDeleteProject={handleDeleteProject}
-              onExportPDF={handleExportPDF}
-              onRemoveCalculation={handleRemoveCalculation}
-            />
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Projects Panel */}
+        {showProjects && (
+          <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-slate-900">Projects</h3>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="New project name..."
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && createProject()}
+                  className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 w-48"
+                />
+                <button
+                  onClick={createProject}
+                  disabled={!newProjectName.trim()}
+                  className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Create
+                </button>
+              </div>
+            </div>
 
             {activeProject && (
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
-                <div className="flex items-center gap-2 text-indigo-700">
-                  <Info className="w-4 h-4" />
-                  <p className="text-xs">Calculations will be added to <strong>{activeProject.name}</strong></p>
-                </div>
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+                <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm text-amber-700">Calculations will be saved to: <strong>{activeProject.name}</strong></span>
               </div>
             )}
+
+            <div className="space-y-2">
+              <button
+                onClick={() => setActiveProjectId(null)}
+                className={`w-full text-left p-3 rounded-lg border transition-all ${
+                  !activeProjectId 
+                    ? 'bg-slate-100 border-slate-300' 
+                    : 'bg-white border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <span className="text-sm font-medium text-slate-700">No Project (Quick Calculations)</span>
+              </button>
+              
+              {projects.map((project) => (
+                <div
+                  key={project.id}
+                  className={`p-3 rounded-lg border transition-all ${
+                    activeProjectId === project.id 
+                      ? 'bg-amber-50 border-amber-200' 
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <button
+                      onClick={() => setActiveProjectId(project.id)}
+                      className="text-left flex-1"
+                    >
+                      <span className="text-sm font-medium text-slate-900">{project.name}</span>
+                      <span className="text-xs text-slate-500 ml-2">({project.calculations.length} calculations)</span>
+                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => exportProjectPDF(project)}
+                        disabled={project.calculations.length === 0}
+                        className="px-3 py-1 text-xs font-medium text-amber-600 hover:text-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        PDF
+                      </button>
+                      <button
+                        onClick={() => { if (confirm('Delete this project?')) deleteProject(project.id); }}
+                        className="px-3 py-1 text-xs font-medium text-red-500 hover:text-red-600"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {activeProjectId === project.id && project.calculations.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-amber-200 space-y-1 max-h-32 overflow-y-auto">
+                      {project.calculations.map((calc) => (
+                        <div key={calc.id} className="flex items-center justify-between text-xs p-2 bg-white rounded border border-amber-100">
+                          <span className="text-slate-600">
+                            <span className="font-mono text-amber-600 uppercase">{calc.type}</span>: {calc.result}
+                          </span>
+                          <button
+                            onClick={() => removeCalculationFromProject(project.id, calc.id)}
+                            className="text-slate-400 hover:text-red-500"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* MW Database Panel */}
+        {showMWDatabase && (
+          <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-slate-900">Molecular Weight Reference</h3>
+              <input
+                type="text"
+                placeholder="Search compounds..."
+                value={mwSearch}
+                onChange={(e) => setMwSearch(e.target.value)}
+                className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 w-64"
+              />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-64 overflow-y-auto pr-2 scrollbar-thin">
+              {filteredMW.map(([key, val]) => (
+                <button
+                  key={key}
+                  onClick={() => copyToClipboard(val.mw.toString(), key)}
+                  className="group text-left p-3 bg-slate-50 border border-slate-200 rounded-lg hover:border-amber-300 hover:bg-amber-50 transition-all duration-200"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-amber-600 font-mono">{val.formula}</span>
+                    {copiedId === key && <span className="text-[10px] text-emerald-600">Copied!</span>}
+                  </div>
+                  <div className="text-sm text-slate-900 group-hover:text-amber-700 transition-colors">{val.name}</div>
+                  <div className="text-lg font-semibold text-slate-600 font-mono mt-1">{val.mw.toLocaleString()} g/mol</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* History Panel */}
+        {showHistory && history.length > 0 && (
+          <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-slate-900">Calculation History</h3>
+              <button 
+                onClick={() => setHistory([])}
+                className="text-xs text-slate-500 hover:text-red-500 transition-colors"
+              >
+                Clear All
+              </button>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+              {history.map((entry) => (
+                <div 
+                  key={entry.id} 
+                  className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg group"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-amber-600 uppercase">{entry.type}</span>
+                    <span className="text-sm text-slate-900">{entry.result}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-400">
+                      {entry.timestamp.toLocaleTimeString()}
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(entry.result, entry.id)}
+                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-amber-600 transition-all"
+                    >
+                      {copiedId === entry.id ? (
+                        <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tab Navigation */}
+        <div className="flex flex-wrap gap-2 mb-8 p-1.5 bg-white border border-slate-200 rounded-xl shadow-sm">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 min-w-[100px] px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                activeTab === tab.id
+                  ? 'bg-gradient-to-b from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-500/20'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <span className="block text-xs opacity-70 mb-0.5 font-mono">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Calculator Panels */}
+        <div className="grid lg:grid-cols-2 gap-8">
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            {activeTab === 'molarity' && <MolarityCalculator onCalculate={addToHistory} />}
+            {activeTab === 'dilution' && <DilutionCalculator onCalculate={addToHistory} />}
+            {activeTab === 'serial' && <SerialDilutionCalculator onCalculate={addToHistory} />}
+            {activeTab === 'percent' && <PercentSolutionCalculator onCalculate={addToHistory} />}
+            {activeTab === 'conversion' && <UnitConverter onCalculate={addToHistory} />}
+            {activeTab === 'stock' && <StockSolutionCalculator onCalculate={addToHistory} />}
+            {activeTab === 'buffer' && <BufferCalculator onCalculate={addToHistory} />}
+            {activeTab === 'osmolarity' && <OsmolarityCalculator onCalculate={addToHistory} />}
           </div>
 
-          {/* Main Content */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Calculator Tabs */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-2">
-              <div className="flex flex-wrap gap-1">
-                {calculators.map((calc) => {
-                  const Icon = calc.icon
-                  const isActive = activeCalc === calc.id
-                  return (
-                    <button
-                      key={calc.id}
-                      onClick={() => setActiveCalc(calc.id)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                        isActive 
-                          ? `bg-${calc.color}-600 text-white shadow-md` 
-                          : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                      style={isActive ? { backgroundColor: `var(--${calc.color}-600, #4f46e5)` } : {}}
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span className="hidden sm:inline">{calc.name}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Active Calculator */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-              <div className={`p-4 bg-gradient-to-r from-${currentCalc.color}-600 to-${currentCalc.color}-500 text-white`}
-                   style={{ background: `linear-gradient(to right, var(--${currentCalc.color}-600, #4f46e5), var(--${currentCalc.color}-500, #6366f1))` }}>
-                <div className="flex items-center gap-3">
-                  <currentCalc.icon className="w-6 h-6" />
-                  <h2 className="text-xl font-bold">{currentCalc.name} Calculator</h2>
-                </div>
-              </div>
-              <div className="p-6">
-                {renderCalculator()}
-              </div>
-            </div>
-
-            {/* Recent History */}
-            {showHistory && recentCalcs.length > 0 && (
-              <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-                <div className="p-4 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <History className="w-5 h-5 text-slate-600" />
-                    <h3 className="font-semibold text-slate-700">Recent Calculations</h3>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (confirm('Clear all history?')) setRecentCalcs([])
-                    }}
-                    className="text-xs text-red-600 hover:text-red-700"
-                  >
-                    Clear All
-                  </button>
-                </div>
-                <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
-                  {recentCalcs.slice(0, 10).map((calc) => (
-                    <div key={calc.id} className="p-3 hover:bg-slate-50">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm text-slate-700">{calc.calculator}</span>
-                        <span className="text-xs text-slate-500">
-                          {calc.timestamp.toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">
-                        {calc.result.label}: <span className="font-mono text-indigo-600">{calc.result.value}</span> {calc.result.unit}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* Quick Reference Panel */}
+          <div className="space-y-6">
+            <QuickReference activeTab={activeTab} />
+            <CommonRecipes />
           </div>
         </div>
       </main>
 
-      {/* MW Search Modal */}
-      <MWSearchModal
-        isOpen={mwModalOpen}
-        onClose={() => setMWModalOpen(false)}
-        onSelect={handleMWSelect}
-      />
-
       {/* Footer */}
-      <footer className="mt-12 py-6 border-t border-slate-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 text-center">
+      <footer className="border-t border-slate-200 mt-16 bg-white">
+        <div className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
           <p className="text-sm text-slate-500">
-            Laboratory Calculations Suite © {new Date().getFullYear()} Dr Thomas Stevenson
+            Dr Thomas Stevenson • Laboratory Calculations Suite
+          </p>
+          <p className="text-xs text-slate-400">
+            Always verify critical calculations independently
           </p>
         </div>
       </footer>
     </div>
-  )
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CALCULATOR COMPONENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface CalculatorProps {
+  onCalculate: (type: CalculatorTab, inputs: Record<string, string | number>, result: string, equation?: string) => void;
+}
+
+function InputField({ 
+  label, 
+  value, 
+  onChange, 
+  unit, 
+  placeholder = '0',
+  helper,
+  isCalculated = false
+}: { 
+  label: string; 
+  value: string; 
+  onChange: (v: string) => void; 
+  unit?: string; 
+  placeholder?: string;
+  helper?: string;
+  isCalculated?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-700">{label}</label>
+      <div className="relative">
+        <input
+          type="number"
+          step="any"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={isCalculated ? 'Leave blank to calculate' : placeholder}
+          className={`w-full px-4 py-3 border rounded-lg text-lg font-mono placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all ${
+            isCalculated && value 
+              ? 'bg-amber-50 border-amber-300 text-amber-700' 
+              : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white'
+          }`}
+        />
+        {unit && (
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">{unit}</span>
+        )}
+      </div>
+      {helper && <p className="text-xs text-slate-500">{helper}</p>}
+      {isCalculated && value && <p className="text-xs text-amber-600">← Calculated</p>}
+    </div>
+  );
+}
+
+// MW Input Field with inline search
+function MWInputField({ 
+  value, 
+  onChange,
+  label = "Molecular weight",
+  isCalculated = false
+}: { 
+  value: string; 
+  onChange: (v: string) => void;
+  label?: string;
+  isCalculated?: boolean;
+}) {
+  const [showSearch, setShowSearch] = useState(false);
+  const [search, setSearch] = useState('');
+  const [selectedCompound, setSelectedCompound] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredCompounds = useMemo(() => {
+    if (!search) return Object.entries(MOLECULAR_WEIGHTS).slice(0, 8);
+    const searchLower = search.toLowerCase();
+    return Object.entries(MOLECULAR_WEIGHTS).filter(
+      ([key, val]) => 
+        key.includes(searchLower) || 
+        val.name.toLowerCase().includes(searchLower) ||
+        val.formula.toLowerCase().includes(searchLower)
+    ).slice(0, 8);
+  }, [search]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowSearch(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectCompound = (mw: number, name: string) => {
+    onChange(mw.toString());
+    setSelectedCompound(name);
+    setShowSearch(false);
+    setSearch('');
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-700">{label}</label>
+      <div className="relative" ref={dropdownRef}>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type="number"
+              step="any"
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value);
+                setSelectedCompound(null);
+              }}
+              placeholder={isCalculated ? 'Leave blank to calculate' : '0'}
+              className={`w-full px-4 py-3 border rounded-lg text-lg font-mono placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all pr-16 ${
+                isCalculated && value 
+                  ? 'bg-amber-50 border-amber-300 text-amber-700' 
+                  : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white'
+              }`}
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">g/mol</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSearch(!showSearch)}
+            className={`px-4 py-3 rounded-lg border transition-all duration-200 flex items-center gap-2 ${
+              showSearch 
+                ? 'bg-amber-50 border-amber-300 text-amber-600' 
+                : 'bg-white border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600'
+            }`}
+            title="Search compound database"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Selected compound indicator */}
+        {selectedCompound && (
+          <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            {selectedCompound}
+          </p>
+        )}
+        {isCalculated && value && !selectedCompound && <p className="text-xs text-amber-600 mt-1">← Calculated</p>}
+
+        {/* Search dropdown */}
+        {showSearch && (
+          <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+            <div className="p-3 border-b border-slate-100">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search compounds (e.g., NaCl, glucose)..."
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {filteredCompounds.length > 0 ? (
+                filteredCompounds.map(([key, val]) => (
+                  <button
+                    key={key}
+                    onClick={() => selectCompound(val.mw, val.name)}
+                    className="w-full text-left px-4 py-3 hover:bg-amber-50 transition-colors border-b border-slate-100 last:border-0 flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">{val.name}</div>
+                      <div className="text-xs text-amber-600 font-mono">{val.formula}</div>
+                    </div>
+                    <div className="text-lg font-semibold text-slate-600 font-mono">{val.mw.toLocaleString()}</div>
+                  </button>
+                ))
+              ) : (
+                <div className="px-4 py-6 text-center text-sm text-slate-500">
+                  No compounds found
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-2 bg-slate-50 border-t border-slate-100">
+              <p className="text-xs text-slate-500">Click a compound to auto-fill MW</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ResultDisplay({ label, value, unit, onCopy }: { label: string; value: string; unit: string; onCopy?: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    onCopy?.();
+  };
+
+  return (
+    <div className="p-5 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-slate-600">{label}</span>
+        <button
+          onClick={handleCopy}
+          className="text-slate-400 hover:text-amber-600 transition-colors"
+          title="Copy to clipboard"
+        >
+          {copied ? (
+            <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+            </svg>
+          )}
+        </button>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-3xl font-semibold text-amber-600 font-mono tracking-tight">
+          {value || '—'}
+        </span>
+        <span className="text-lg text-slate-600">{unit}</span>
+      </div>
+    </div>
+  );
+}
+
+// Molarity Calculator - Flexible 4-field solver
+function MolarityCalculator({ onCalculate }: CalculatorProps) {
+  const [mass, setMass] = useState('');
+  const [mw, setMw] = useState('');
+  const [volume, setVolume] = useState('');
+  const [molarity, setMolarity] = useState('');
+
+  const result = useMemo(() => {
+    const m = parseFloat(mass);
+    const w = parseFloat(mw);
+    const v = parseFloat(volume);
+    const M = parseFloat(molarity);
+
+    const filled = [!isNaN(m), !isNaN(w), !isNaN(v), !isNaN(M)];
+    const filledCount = filled.filter(Boolean).length;
+
+    if (filledCount !== 3) return null;
+
+    // mass = M × V × MW
+    if (isNaN(m) && w > 0 && v > 0 && M > 0) {
+      const calc = M * (v / 1000) * w;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'g', 
+        label: 'Mass needed',
+        field: 'mass',
+        equation: `mass = ${M} M × ${v/1000} L × ${w} g/mol = ${calc.toPrecision(4)} g`
+      };
+    }
+    // MW = mass / (M × V)
+    if (isNaN(w) && m > 0 && v > 0 && M > 0) {
+      const calc = m / (M * (v / 1000));
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'g/mol', 
+        label: 'Molecular weight',
+        field: 'mw',
+        equation: `MW = ${m} g / (${M} M × ${v/1000} L) = ${calc.toPrecision(4)} g/mol`
+      };
+    }
+    // V = mass / (M × MW)
+    if (isNaN(v) && m > 0 && w > 0 && M > 0) {
+      const calc = (m / (M * w)) * 1000;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'mL', 
+        label: 'Volume',
+        field: 'volume',
+        equation: `V = ${m} g / (${M} M × ${w} g/mol) × 1000 = ${calc.toPrecision(4)} mL`
+      };
+    }
+    // M = mass / (MW × V)
+    if (isNaN(M) && m > 0 && w > 0 && v > 0) {
+      const moles = m / w;
+      const calc = moles / (v / 1000);
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'M', 
+        label: 'Molarity',
+        field: 'molarity',
+        equation: `M = (${m} g / ${w} g/mol) / ${v/1000} L = ${calc.toPrecision(4)} M`
+      };
+    }
+    return null;
+  }, [mass, mw, volume, molarity]);
+
+  const handleCalculate = () => {
+    if (result) {
+      onCalculate('molarity', { mass, mw, volume, molarity }, `${result.value} ${result.unit}`, result.equation);
+    }
+  };
+
+  const getIsCalculated = (field: string) => {
+    const m = parseFloat(mass);
+    const w = parseFloat(mw);
+    const v = parseFloat(volume);
+    const M = parseFloat(molarity);
+    const filled = [!isNaN(m), !isNaN(w), !isNaN(v), !isNaN(M)].filter(Boolean).length;
+    
+    if (filled === 3) {
+      if (field === 'mass' && isNaN(m)) return true;
+      if (field === 'mw' && isNaN(w)) return true;
+      if (field === 'volume' && isNaN(v)) return true;
+      if (field === 'molarity' && isNaN(M)) return true;
+    }
+    return false;
+  };
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold text-slate-900">Molarity Calculator</h2>
+        <span className="text-sm text-slate-500 font-mono">m = M × V × MW</span>
+      </div>
+      <p className="text-sm text-slate-500 mb-6">Enter any 3 values to calculate the 4th</p>
+
+      <div className="grid gap-4 mb-6">
+        <InputField 
+          label="Mass of solute" 
+          value={mass} 
+          onChange={setMass} 
+          unit="g" 
+          isCalculated={getIsCalculated('mass')}
+        />
+        <MWInputField 
+          value={mw} 
+          onChange={setMw} 
+          isCalculated={getIsCalculated('mw')}
+        />
+        <InputField 
+          label="Volume of solution" 
+          value={volume} 
+          onChange={setVolume} 
+          unit="mL" 
+          isCalculated={getIsCalculated('volume')}
+        />
+        <InputField 
+          label="Molarity" 
+          value={molarity} 
+          onChange={setMolarity} 
+          unit="M" 
+          isCalculated={getIsCalculated('molarity')}
+        />
+      </div>
+
+      {result && (
+        <ResultDisplay 
+          label={result.label} 
+          value={result.value} 
+          unit={result.unit} 
+          onCopy={handleCalculate}
+        />
+      )}
+    </div>
+  );
+}
+
+// Dilution Calculator - Flexible 4-field solver
+function DilutionCalculator({ onCalculate }: CalculatorProps) {
+  const [c1, setC1] = useState('');
+  const [v1, setV1] = useState('');
+  const [c2, setC2] = useState('');
+  const [v2, setV2] = useState('');
+
+  const result = useMemo(() => {
+    const C1 = parseFloat(c1);
+    const V1 = parseFloat(v1);
+    const C2 = parseFloat(c2);
+    const V2 = parseFloat(v2);
+
+    const filled = [!isNaN(C1), !isNaN(V1), !isNaN(C2), !isNaN(V2)];
+    const filledCount = filled.filter(Boolean).length;
+
+    if (filledCount !== 3) return null;
+
+    if (isNaN(C1) && V1 > 0 && C2 > 0 && V2 > 0) {
+      const calc = (C2 * V2) / V1;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'M', 
+        label: 'Stock concentration (C₁)',
+        field: 'c1',
+        equation: `C₁ = (${C2} × ${V2}) / ${V1} = ${calc.toPrecision(4)} M`
+      };
+    }
+    if (isNaN(V1) && C1 > 0 && C2 > 0 && V2 > 0) {
+      const calc = (C2 * V2) / C1;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'mL', 
+        label: 'Stock volume needed (V₁)',
+        field: 'v1',
+        equation: `V₁ = (${C2} × ${V2}) / ${C1} = ${calc.toPrecision(4)} mL`
+      };
+    }
+    if (isNaN(C2) && C1 > 0 && V1 > 0 && V2 > 0) {
+      const calc = (C1 * V1) / V2;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'M', 
+        label: 'Final concentration (C₂)',
+        field: 'c2',
+        equation: `C₂ = (${C1} × ${V1}) / ${V2} = ${calc.toPrecision(4)} M`
+      };
+    }
+    if (isNaN(V2) && C1 > 0 && V1 > 0 && C2 > 0) {
+      const calc = (C1 * V1) / C2;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'mL', 
+        label: 'Final volume (V₂)',
+        field: 'v2',
+        equation: `V₂ = (${C1} × ${V1}) / ${C2} = ${calc.toPrecision(4)} mL`
+      };
+    }
+    return null;
+  }, [c1, v1, c2, v2]);
+
+  const handleCalculate = () => {
+    if (result) {
+      onCalculate('dilution', { c1, v1, c2, v2 }, `${result.value} ${result.unit}`, result.equation);
+    }
+  };
+
+  const getIsCalculated = (field: string) => {
+    const C1 = parseFloat(c1);
+    const V1 = parseFloat(v1);
+    const C2 = parseFloat(c2);
+    const V2 = parseFloat(v2);
+    const filled = [!isNaN(C1), !isNaN(V1), !isNaN(C2), !isNaN(V2)].filter(Boolean).length;
+    
+    if (filled === 3) {
+      if (field === 'c1' && isNaN(C1)) return true;
+      if (field === 'v1' && isNaN(V1)) return true;
+      if (field === 'c2' && isNaN(C2)) return true;
+      if (field === 'v2' && isNaN(V2)) return true;
+    }
+    return false;
+  };
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold text-slate-900">Dilution Calculator</h2>
+        <span className="text-sm text-slate-500 font-mono">C₁V₁ = C₂V₂</span>
+      </div>
+      <p className="text-sm text-slate-500 mb-6">Enter any 3 values to calculate the 4th</p>
+
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <InputField 
+          label="Stock conc. (C₁)" 
+          value={c1} 
+          onChange={setC1} 
+          unit="M" 
+          isCalculated={getIsCalculated('c1')}
+        />
+        <InputField 
+          label="Stock vol. (V₁)" 
+          value={v1} 
+          onChange={setV1} 
+          unit="mL" 
+          isCalculated={getIsCalculated('v1')}
+        />
+        <InputField 
+          label="Final conc. (C₂)" 
+          value={c2} 
+          onChange={setC2} 
+          unit="M" 
+          isCalculated={getIsCalculated('c2')}
+        />
+        <InputField 
+          label="Final vol. (V₂)" 
+          value={v2} 
+          onChange={setV2} 
+          unit="mL" 
+          isCalculated={getIsCalculated('v2')}
+        />
+      </div>
+
+      {result && (
+        <ResultDisplay 
+          label={result.label} 
+          value={result.value} 
+          unit={result.unit}
+          onCopy={handleCalculate}
+        />
+      )}
+    </div>
+  );
+}
+
+// Serial Dilution Calculator
+function SerialDilutionCalculator({ onCalculate }: CalculatorProps) {
+  const [initialConc, setInitialConc] = useState('');
+  const [transferVol, setTransferVol] = useState('');
+  const [diluentVol, setDiluentVol] = useState('');
+  const [steps, setSteps] = useState('');
+
+  const results = useMemo(() => {
+    const C0 = parseFloat(initialConc);
+    const Vt = parseFloat(transferVol);
+    const Vd = parseFloat(diluentVol);
+    const n = parseInt(steps);
+
+    if (C0 > 0 && Vt > 0 && Vd > 0 && n > 0 && n <= 20) {
+      const dilutionFactor = Vt / (Vt + Vd);
+      const concentrations = [];
+      for (let i = 1; i <= n; i++) {
+        const conc = C0 * Math.pow(dilutionFactor, i);
+        concentrations.push(conc);
+      }
+      return { dilutionFactor: 1 / dilutionFactor, concentrations };
+    }
+    return null;
+  }, [initialConc, transferVol, diluentVol, steps]);
+
+  const handleCalculate = () => {
+    if (results) {
+      const finalConc = results.concentrations[results.concentrations.length - 1];
+      const equation = `C_final = ${initialConc} × (${transferVol}/(${transferVol}+${diluentVol}))^${steps}`;
+      onCalculate('serial', { initialConc, transferVol, diluentVol, steps }, 
+        `Final: ${finalConc < 0.001 ? finalConc.toExponential(2) : finalConc.toPrecision(3)} M`, equation);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <h2 className="text-xl font-semibold text-slate-900 mb-6">Serial Dilution Calculator</h2>
+
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <InputField label="Initial concentration" value={initialConc} onChange={setInitialConc} unit="M" />
+        <InputField label="Transfer volume" value={transferVol} onChange={setTransferVol} unit="mL" />
+        <InputField label="Diluent volume" value={diluentVol} onChange={setDiluentVol} unit="mL" />
+        <InputField label="Number of steps" value={steps} onChange={setSteps} placeholder="1-20" />
+      </div>
+
+      {results && (
+        <div className="space-y-4">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+            <span className="text-sm text-slate-600">Dilution factor per step</span>
+            <div className="text-2xl font-semibold text-amber-600 font-mono mt-1">
+              1:{results.dilutionFactor.toFixed(1)}
+            </div>
+          </div>
+          
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-slate-600">Concentrations at each step</span>
+              <button 
+                onClick={handleCalculate}
+                className="text-xs text-amber-600 hover:text-amber-700"
+              >
+                Save to history
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-2">
+              {results.concentrations.map((conc, i) => (
+                <div key={i} className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-lg">
+                  <span className="text-xs text-slate-500">Step {i + 1}</span>
+                  <span className="font-mono text-sm text-slate-900">
+                    {conc < 0.001 ? conc.toExponential(2) : conc.toPrecision(3)} M
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Percent Solution Calculator - Flexible 3-field solver
+function PercentSolutionCalculator({ onCalculate }: CalculatorProps) {
+  const [mode, setMode] = useState<'wv' | 'vv'>('wv');
+  const [percent, setPercent] = useState('');
+  const [volume, setVolume] = useState('');
+  const [amount, setAmount] = useState('');
+
+  const result = useMemo(() => {
+    const p = parseFloat(percent);
+    const v = parseFloat(volume);
+    const a = parseFloat(amount);
+
+    const filled = [!isNaN(p), !isNaN(v), !isNaN(a)];
+    const filledCount = filled.filter(Boolean).length;
+
+    if (filledCount !== 2) return null;
+
+    const unitLabel = mode === 'wv' ? 'g' : 'mL';
+
+    if (isNaN(a) && p > 0 && v > 0) {
+      const calc = (p / 100) * v;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: unitLabel, 
+        label: `${mode === 'wv' ? 'Mass' : 'Volume'} of solute needed`,
+        field: 'amount',
+        equation: `amount = (${p}% / 100) × ${v} mL = ${calc.toPrecision(4)} ${unitLabel}`
+      };
+    }
+    if (isNaN(p) && a > 0 && v > 0) {
+      const calc = (a / v) * 100;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: '%', 
+        label: 'Percent concentration',
+        field: 'percent',
+        equation: `% = (${a} ${unitLabel} / ${v} mL) × 100 = ${calc.toPrecision(4)}%`
+      };
+    }
+    if (isNaN(v) && a > 0 && p > 0) {
+      const calc = (a / p) * 100;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'mL', 
+        label: 'Total volume',
+        field: 'volume',
+        equation: `V = (${a} ${unitLabel} / ${p}%) × 100 = ${calc.toPrecision(4)} mL`
+      };
+    }
+    return null;
+  }, [mode, percent, volume, amount]);
+
+  const handleCalculate = () => {
+    if (result) {
+      onCalculate('percent', { mode, percent, volume, amount }, `${result.value} ${result.unit}`, result.equation);
+    }
+  };
+
+  const getIsCalculated = (field: string) => {
+    const p = parseFloat(percent);
+    const v = parseFloat(volume);
+    const a = parseFloat(amount);
+    const filled = [!isNaN(p), !isNaN(v), !isNaN(a)].filter(Boolean).length;
+    
+    if (filled === 2) {
+      if (field === 'percent' && isNaN(p)) return true;
+      if (field === 'volume' && isNaN(v)) return true;
+      if (field === 'amount' && isNaN(a)) return true;
+    }
+    return false;
+  };
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold text-slate-900">Percent Solution Calculator</h2>
+      </div>
+      <p className="text-sm text-slate-500 mb-6">Enter any 2 values to calculate the 3rd</p>
+
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => setMode('wv')}
+          className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
+            mode === 'wv' 
+              ? 'bg-amber-50 border-amber-200 text-amber-700' 
+              : 'border-slate-200 text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          Weight/Volume (w/v)
+        </button>
+        <button
+          onClick={() => setMode('vv')}
+          className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
+            mode === 'vv' 
+              ? 'bg-amber-50 border-amber-200 text-amber-700' 
+              : 'border-slate-200 text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          Volume/Volume (v/v)
+        </button>
+      </div>
+
+      <div className="grid gap-4 mb-6">
+        <InputField 
+          label="Percent" 
+          value={percent} 
+          onChange={setPercent} 
+          unit="%" 
+          isCalculated={getIsCalculated('percent')}
+        />
+        <InputField 
+          label="Total volume" 
+          value={volume} 
+          onChange={setVolume} 
+          unit="mL" 
+          isCalculated={getIsCalculated('volume')}
+        />
+        <InputField 
+          label={mode === 'wv' ? 'Mass of solute' : 'Volume of solute'} 
+          value={amount} 
+          onChange={setAmount} 
+          unit={mode === 'wv' ? 'g' : 'mL'} 
+          isCalculated={getIsCalculated('amount')}
+        />
+      </div>
+
+      {result && (
+        <ResultDisplay 
+          label={result.label} 
+          value={result.value} 
+          unit={result.unit}
+          onCopy={handleCalculate}
+        />
+      )}
+    </div>
+  );
+}
+
+// Unit Converter
+function UnitConverter({ onCalculate }: CalculatorProps) {
+  const [conversionType, setConversionType] = useState<'mg_to_m' | 'm_to_mg' | 'ppm'>('mg_to_m');
+  const [value, setValue] = useState('');
+  const [mw, setMw] = useState('');
+
+  const result = useMemo(() => {
+    const v = parseFloat(value);
+    const w = parseFloat(mw);
+
+    if (conversionType === 'mg_to_m' && v > 0 && w > 0) {
+      const M = (v / w) / 1000;
+      return { value: M.toPrecision(4), unit: 'M', label: 'Molarity', equation: `M = (${v} mg/mL / ${w} g/mol) / 1000` };
+    } else if (conversionType === 'm_to_mg' && v > 0 && w > 0) {
+      const mgmL = v * w;
+      return { value: mgmL.toPrecision(4), unit: 'mg/mL', label: 'Mass concentration', equation: `mg/mL = ${v} M × ${w} g/mol` };
+    } else if (conversionType === 'ppm' && v > 0) {
+      return { value: v.toPrecision(4), unit: 'mg/L', label: 'Mass per liter', equation: `${v} ppm = ${v} mg/L` };
+    }
+    return null;
+  }, [conversionType, value, mw]);
+
+  const handleCalculate = () => {
+    if (result) {
+      onCalculate('conversion', { conversionType, value, mw }, `${result.value} ${result.unit}`, result.equation);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <h2 className="text-xl font-semibold text-slate-900 mb-6">Unit Converter</h2>
+
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-lg mb-6">
+        {[
+          { id: 'mg_to_m' as const, label: 'mg/mL → M' },
+          { id: 'm_to_mg' as const, label: 'M → mg/mL' },
+          { id: 'ppm' as const, label: 'ppm → mg/L' },
+        ].map((c) => (
+          <button
+            key={c.id}
+            onClick={() => setConversionType(c.id)}
+            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              conversionType === c.id ? 'bg-amber-500 text-white' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-4 mb-6">
+        <InputField 
+          label={
+            conversionType === 'mg_to_m' ? 'Concentration' : 
+            conversionType === 'm_to_mg' ? 'Molarity' : 'PPM value'
+          } 
+          value={value} 
+          onChange={setValue} 
+          unit={conversionType === 'mg_to_m' ? 'mg/mL' : conversionType === 'm_to_mg' ? 'M' : 'ppm'} 
+        />
+        {conversionType !== 'ppm' && (
+          <MWInputField value={mw} onChange={setMw} />
+        )}
+      </div>
+
+      {result && (
+        <ResultDisplay 
+          label={result.label} 
+          value={result.value} 
+          unit={result.unit}
+          onCopy={handleCalculate}
+        />
+      )}
+    </div>
+  );
+}
+
+// Stock Solution Calculator - Flexible 4-field solver
+function StockSolutionCalculator({ onCalculate }: CalculatorProps) {
+  const [stockConc, setStockConc] = useState('');
+  const [stockVol, setStockVol] = useState('');
+  const [mw, setMw] = useState('');
+  const [mass, setMass] = useState('');
+
+  const result = useMemo(() => {
+    const c = parseFloat(stockConc);
+    const v = parseFloat(stockVol);
+    const w = parseFloat(mw);
+    const m = parseFloat(mass);
+
+    const filled = [!isNaN(c), !isNaN(v), !isNaN(w), !isNaN(m)];
+    const filledCount = filled.filter(Boolean).length;
+
+    if (filledCount !== 3) return null;
+
+    // mass = M × V × MW
+    if (isNaN(m) && c > 0 && v > 0 && w > 0) {
+      const calc = c * (v / 1000) * w;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'g', 
+        label: 'Mass needed',
+        field: 'mass',
+        equation: `mass = ${c} M × ${v/1000} L × ${w} g/mol = ${calc.toPrecision(4)} g`
+      };
+    }
+    // M = mass / (V × MW)
+    if (isNaN(c) && m > 0 && v > 0 && w > 0) {
+      const calc = m / ((v / 1000) * w);
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'M', 
+        label: 'Stock concentration',
+        field: 'stockConc',
+        equation: `M = ${m} g / (${v/1000} L × ${w} g/mol) = ${calc.toPrecision(4)} M`
+      };
+    }
+    // V = mass / (M × MW)
+    if (isNaN(v) && m > 0 && c > 0 && w > 0) {
+      const calc = (m / (c * w)) * 1000;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'mL', 
+        label: 'Volume to prepare',
+        field: 'stockVol',
+        equation: `V = ${m} g / (${c} M × ${w} g/mol) × 1000 = ${calc.toPrecision(4)} mL`
+      };
+    }
+    // MW = mass / (M × V)
+    if (isNaN(w) && m > 0 && c > 0 && v > 0) {
+      const calc = m / (c * (v / 1000));
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'g/mol', 
+        label: 'Molecular weight',
+        field: 'mw',
+        equation: `MW = ${m} g / (${c} M × ${v/1000} L) = ${calc.toPrecision(4)} g/mol`
+      };
+    }
+    return null;
+  }, [stockConc, stockVol, mw, mass]);
+
+  const handleCalculate = () => {
+    if (result) {
+      onCalculate('stock', { stockConc, stockVol, mw, mass }, `${result.value} ${result.unit}`, result.equation);
+    }
+  };
+
+  const getIsCalculated = (field: string) => {
+    const c = parseFloat(stockConc);
+    const v = parseFloat(stockVol);
+    const w = parseFloat(mw);
+    const m = parseFloat(mass);
+    const filled = [!isNaN(c), !isNaN(v), !isNaN(w), !isNaN(m)].filter(Boolean).length;
+    
+    if (filled === 3) {
+      if (field === 'stockConc' && isNaN(c)) return true;
+      if (field === 'stockVol' && isNaN(v)) return true;
+      if (field === 'mw' && isNaN(w)) return true;
+      if (field === 'mass' && isNaN(m)) return true;
+    }
+    return false;
+  };
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold text-slate-900">Stock Solution Prep</h2>
+        <span className="text-sm text-slate-500 font-mono">m = M × V × MW</span>
+      </div>
+      <p className="text-sm text-slate-500 mb-6">Enter any 3 values to calculate the 4th</p>
+
+      <div className="grid gap-4 mb-6">
+        <InputField 
+          label="Desired stock concentration" 
+          value={stockConc} 
+          onChange={setStockConc} 
+          unit="M" 
+          isCalculated={getIsCalculated('stockConc')}
+        />
+        <InputField 
+          label="Volume to prepare" 
+          value={stockVol} 
+          onChange={setStockVol} 
+          unit="mL" 
+          isCalculated={getIsCalculated('stockVol')}
+        />
+        <MWInputField 
+          value={mw} 
+          onChange={setMw} 
+          isCalculated={getIsCalculated('mw')}
+        />
+        <InputField 
+          label="Mass of compound" 
+          value={mass} 
+          onChange={setMass} 
+          unit="g" 
+          isCalculated={getIsCalculated('mass')}
+        />
+      </div>
+
+      {result && (
+        <div className="space-y-4">
+          <ResultDisplay 
+            label={result.label} 
+            value={result.value} 
+            unit={result.unit}
+            onCopy={handleCalculate}
+          />
+          {result.field === 'mass' && (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <span className="text-sm text-slate-600 block mb-2">Instructions</span>
+              <p className="text-sm text-slate-900">
+                Weigh {result.value} g of compound. Dissolve in ~{(parseFloat(stockVol) * 0.8).toFixed(0)} mL solvent. 
+                Adjust final volume to {stockVol} mL.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Buffer Calculator
+function BufferCalculator({ onCalculate }: CalculatorProps) {
+  const [selectedBuffer, setSelectedBuffer] = useState('');
+  const [targetPH, setTargetPH] = useState('');
+  const [totalConc, setTotalConc] = useState('');
+
+  const result = useMemo(() => {
+    const buffer = BUFFER_PKA[selectedBuffer];
+    const pH = parseFloat(targetPH);
+    const C = parseFloat(totalConc);
+
+    if (buffer && pH > 0 && C > 0) {
+      const ratio = Math.pow(10, pH - buffer.pka);
+      const baseConc = (C * ratio) / (1 + ratio);
+      const acidConc = C - baseConc;
+      return {
+        pka: buffer.pka,
+        ratio,
+        baseConc: baseConc.toPrecision(4),
+        acidConc: acidConc.toPrecision(4),
+        percentBase: ((baseConc / C) * 100).toFixed(1),
+        percentAcid: ((acidConc / C) * 100).toFixed(1),
+      };
+    }
+    return null;
+  }, [selectedBuffer, targetPH, totalConc]);
+
+  const handleCalculate = () => {
+    if (result) {
+      const equation = `pH = ${result.pka} + log([A⁻]/[HA]) = ${result.pka} + log(${result.ratio.toFixed(3)})`;
+      onCalculate('buffer', { selectedBuffer, targetPH, totalConc }, 
+        `[A⁻]=${result.baseConc} M, [HA]=${result.acidConc} M`, equation);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <h2 className="text-xl font-semibold text-slate-900 mb-2">Buffer Calculator</h2>
+      <p className="text-sm text-slate-500 mb-6">Henderson–Hasselbalch equation</p>
+
+      <div className="grid gap-4 mb-6">
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-slate-700">Buffer system</label>
+          <select
+            value={selectedBuffer}
+            onChange={(e) => setSelectedBuffer(e.target.value)}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+          >
+            <option value="">Select a buffer...</option>
+            {Object.entries(BUFFER_PKA).map(([key, val]) => (
+              <option key={key} value={key}>
+                {val.name} (pKa {val.pka}, range {val.range})
+              </option>
+            ))}
+          </select>
+        </div>
+        <InputField label="Target pH" value={targetPH} onChange={setTargetPH} />
+        <InputField label="Total buffer concentration" value={totalConc} onChange={setTotalConc} unit="M" />
+      </div>
+
+      {result && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <span className="text-sm text-slate-600">Base form [A⁻]</span>
+              <div className="text-2xl font-semibold text-amber-600 font-mono mt-1">{result.baseConc} M</div>
+              <div className="text-xs text-slate-500 mt-1">{result.percentBase}% of total</div>
+            </div>
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <span className="text-sm text-slate-600">Acid form [HA]</span>
+              <div className="text-2xl font-semibold text-amber-600 font-mono mt-1">{result.acidConc} M</div>
+              <div className="text-xs text-slate-500 mt-1">{result.percentAcid}% of total</div>
+            </div>
+          </div>
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+            <div>
+              <span className="text-sm text-slate-600">[A⁻]/[HA] ratio</span>
+              <div className="text-xl font-semibold text-slate-900 font-mono mt-1">{result.ratio.toFixed(3)}</div>
+            </div>
+            <button 
+              onClick={handleCalculate}
+              className="text-xs text-amber-600 hover:text-amber-700"
+            >
+              Save to history
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Osmolarity Calculator - Flexible 3-field solver
+function OsmolarityCalculator({ onCalculate }: CalculatorProps) {
+  const [molarity, setMolarity] = useState('');
+  const [particles, setParticles] = useState('');
+  const [osmolarity, setOsmolarity] = useState('');
+
+  const result = useMemo(() => {
+    const M = parseFloat(molarity);
+    const i = parseFloat(particles);
+    const O = parseFloat(osmolarity);
+
+    const filled = [!isNaN(M), !isNaN(i), !isNaN(O)];
+    const filledCount = filled.filter(Boolean).length;
+
+    if (filledCount !== 2) return null;
+
+    if (isNaN(O) && M > 0 && i > 0) {
+      const calc = M * i * 1000;
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'mOsm/L', 
+        label: 'Osmolarity',
+        field: 'osmolarity',
+        equation: `Osm = ${M} M × ${i} × 1000 = ${calc.toPrecision(4)} mOsm/L`
+      };
+    }
+    if (isNaN(M) && O > 0 && i > 0) {
+      const calc = O / (i * 1000);
+      return { 
+        value: calc.toPrecision(4), 
+        unit: 'M', 
+        label: 'Molarity',
+        field: 'molarity',
+        equation: `M = ${O} mOsm/L / (${i} × 1000) = ${calc.toPrecision(4)} M`
+      };
+    }
+    if (isNaN(i) && M > 0 && O > 0) {
+      const calc = O / (M * 1000);
+      return { 
+        value: calc.toPrecision(2), 
+        unit: '', 
+        label: 'Dissociation coefficient (i)',
+        field: 'particles',
+        equation: `i = ${O} mOsm/L / (${M} M × 1000) = ${calc.toPrecision(2)}`
+      };
+    }
+    return null;
+  }, [molarity, particles, osmolarity]);
+
+  const handleCalculate = () => {
+    if (result) {
+      onCalculate('osmolarity', { molarity, particles, osmolarity }, `${result.value} ${result.unit}`, result.equation);
+    }
+  };
+
+  const getIsCalculated = (field: string) => {
+    const M = parseFloat(molarity);
+    const i = parseFloat(particles);
+    const O = parseFloat(osmolarity);
+    const filled = [!isNaN(M), !isNaN(i), !isNaN(O)].filter(Boolean).length;
+    
+    if (filled === 2) {
+      if (field === 'molarity' && isNaN(M)) return true;
+      if (field === 'particles' && isNaN(i)) return true;
+      if (field === 'osmolarity' && isNaN(O)) return true;
+    }
+    return false;
+  };
+
+  const commonSolutes = [
+    { name: 'NaCl', i: 2 },
+    { name: 'KCl', i: 2 },
+    { name: 'CaCl₂', i: 3 },
+    { name: 'MgCl₂', i: 3 },
+    { name: 'Glucose', i: 1 },
+    { name: 'Sucrose', i: 1 },
+    { name: 'Urea', i: 1 },
+  ];
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold text-slate-900">Osmolarity Calculator</h2>
+        <span className="text-sm text-slate-500 font-mono">Osm = M × i</span>
+      </div>
+      <p className="text-sm text-slate-500 mb-6">Enter any 2 values to calculate the 3rd</p>
+
+      <div className="grid gap-4 mb-6">
+        <InputField 
+          label="Molarity" 
+          value={molarity} 
+          onChange={setMolarity} 
+          unit="M" 
+          isCalculated={getIsCalculated('molarity')}
+        />
+        <InputField 
+          label="Dissociation coefficient (i)" 
+          value={particles} 
+          onChange={setParticles} 
+          helper="Number of particles the solute dissociates into"
+          isCalculated={getIsCalculated('particles')}
+        />
+        <InputField 
+          label="Osmolarity" 
+          value={osmolarity} 
+          onChange={setOsmolarity} 
+          unit="mOsm/L" 
+          isCalculated={getIsCalculated('osmolarity')}
+        />
+      </div>
+
+      <div className="mb-6">
+        <span className="text-xs text-slate-500 block mb-2">Quick select (i value)</span>
+        <div className="flex flex-wrap gap-2">
+          {commonSolutes.map((s) => (
+            <button
+              key={s.name}
+              onClick={() => setParticles(s.i.toString())}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 transition-all"
+            >
+              {s.name} (i={s.i})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {result && (
+        <ResultDisplay 
+          label={result.label} 
+          value={result.value} 
+          unit={result.unit}
+          onCopy={handleCalculate}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REFERENCE COMPONENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function QuickReference({ activeTab }: { activeTab: CalculatorTab }) {
+  const references: Record<CalculatorTab, { title: string; formula: string; description: string }[]> = {
+    molarity: [
+      { title: 'Molarity', formula: 'M = moles / L', description: 'Moles of solute per liter of solution' },
+      { title: 'Moles from mass', formula: 'n = m / MW', description: 'Mass divided by molecular weight' },
+      { title: 'Mass needed', formula: 'm = M × V × MW', description: 'To prepare a specific molarity solution' },
+    ],
+    dilution: [
+      { title: 'Dilution equation', formula: 'C₁V₁ = C₂V₂', description: 'Conservation of moles during dilution' },
+      { title: 'Fold dilution', formula: 'Fold = V₂ / V₁', description: 'Ratio of final to initial volume' },
+    ],
+    serial: [
+      { title: 'Serial dilution', formula: 'Cₙ = C₀ × (Vₜ / Vₜₒₜₐₗ)ⁿ', description: 'Concentration after n dilution steps' },
+    ],
+    percent: [
+      { title: 'Weight/volume %', formula: '% = (g / 100 mL) × 100', description: 'Grams of solute per 100 mL' },
+      { title: 'Volume/volume %', formula: '% = (mL / 100 mL) × 100', description: 'mL of solute per 100 mL' },
+    ],
+    conversion: [
+      { title: 'mg/mL to M', formula: 'M = (mg/mL) / MW', description: 'Divide by molecular weight' },
+      { title: 'M to mg/mL', formula: 'mg/mL = M × MW', description: 'Multiply by molecular weight' },
+      { title: 'ppm', formula: '1 ppm = 1 mg/L', description: 'Parts per million equivalence' },
+    ],
+    stock: [
+      { title: 'Stock preparation', formula: 'm = Mₛ × Vₛ × MW', description: 'Mass to prepare a stock solution' },
+    ],
+    buffer: [
+      { title: 'Henderson-Hasselbalch', formula: 'pH = pKa + log([A⁻]/[HA])', description: 'Relationship between pH and buffer ratio' },
+    ],
+    osmolarity: [
+      { title: 'Osmolarity', formula: 'Osm = M × i', description: 'Molarity times dissociation coefficient' },
+    ],
+  };
+
+  const ref = references[activeTab];
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+      <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+        <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5" />
+        </svg>
+        Quick Reference
+      </h3>
+      <div className="space-y-4">
+        {ref.map((r, i) => (
+          <div key={i} className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-900">{r.title}</span>
+            </div>
+            <code className="text-lg text-amber-600 font-mono">{r.formula}</code>
+            <p className="text-xs text-slate-500 mt-2">{r.description}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CommonRecipes() {
+  const recipes = [
+    { name: '10× PBS', components: ['1.37 M NaCl', '27 mM KCl', '100 mM Na₂HPO₄', '18 mM KH₂PO₄', 'pH 7.4'] },
+    { name: '1× TAE Buffer', components: ['40 mM Tris-acetate', '1 mM EDTA', 'pH 8.3'] },
+    { name: '1× TBE Buffer', components: ['89 mM Tris', '89 mM Boric acid', '2 mM EDTA', 'pH 8.3'] },
+    { name: 'LB Medium', components: ['1% Tryptone', '0.5% Yeast extract', '1% NaCl', 'pH 7.0'] },
+  ];
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+      <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+        <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+        </svg>
+        Common Buffer Recipes
+      </h3>
+      <div className="grid gap-3">
+        {recipes.map((r, i) => (
+          <div key={i} className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+            <span className="text-sm font-medium text-amber-600 block mb-2">{r.name}</span>
+            <div className="flex flex-wrap gap-2">
+              {r.components.map((c, j) => (
+                <span key={j} className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-700">
+                  {c}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
