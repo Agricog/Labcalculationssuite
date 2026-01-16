@@ -68,6 +68,36 @@ const BUFFER_PKA: Record<string, { name: string; pka: number; range: string }> =
   'caps': { name: 'CAPS', pka: 10.4, range: '9.7–11.1' },
 };
 
+// Concentration units with conversion to base unit (M)
+const CONC_UNITS: Record<string, { label: string; toBase: number; fromBase: number }> = {
+  'M': { label: 'M', toBase: 1, fromBase: 1 },
+  'mM': { label: 'mM', toBase: 0.001, fromBase: 1000 },
+  'µM': { label: 'µM', toBase: 0.000001, fromBase: 1000000 },
+  'nM': { label: 'nM', toBase: 0.000000001, fromBase: 1000000000 },
+  'pM': { label: 'pM', toBase: 0.000000000001, fromBase: 1000000000000 },
+};
+
+// Volume units with conversion to base unit (mL)
+const VOL_UNITS: Record<string, { label: string; toBase: number; fromBase: number }> = {
+  'L': { label: 'L', toBase: 1000, fromBase: 0.001 },
+  'mL': { label: 'mL', toBase: 1, fromBase: 1 },
+  'µL': { label: 'µL', toBase: 0.001, fromBase: 1000 },
+};
+
+// Mass units with conversion to base unit (g)
+const MASS_UNITS: Record<string, { label: string; toBase: number; fromBase: number }> = {
+  'kg': { label: 'kg', toBase: 1000, fromBase: 0.001 },
+  'g': { label: 'g', toBase: 1, fromBase: 1 },
+  'mg': { label: 'mg', toBase: 0.001, fromBase: 1000 },
+  'µg': { label: 'µg', toBase: 0.000001, fromBase: 1000000 },
+};
+
+// Osmolarity units
+const OSM_UNITS: Record<string, { label: string; toBase: number; fromBase: number }> = {
+  'Osm/L': { label: 'Osm/L', toBase: 1000, fromBase: 0.001 },
+  'mOsm/L': { label: 'mOsm/L', toBase: 1, fromBase: 1 },
+};
+
 type CalculatorTab = 
   | 'molarity' 
   | 'dilution' 
@@ -663,6 +693,62 @@ function InputField({
   );
 }
 
+// Input field with selectable unit
+function InputFieldWithUnit({ 
+  label, 
+  value, 
+  onChange,
+  unit,
+  onUnitChange,
+  units,
+  placeholder = '0',
+  helper,
+  isCalculated = false
+}: { 
+  label: string; 
+  value: string; 
+  onChange: (v: string) => void;
+  unit: string;
+  onUnitChange: (u: string) => void;
+  units: Record<string, { label: string; toBase: number; fromBase: number }>;
+  placeholder?: string;
+  helper?: string;
+  isCalculated?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-700">{label}</label>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <input
+            type="number"
+            step="any"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={isCalculated ? 'Leave blank to calculate' : placeholder}
+            className={`w-full px-4 py-3 border rounded-lg text-lg font-mono placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all ${
+              isCalculated && value 
+                ? 'bg-amber-50 border-amber-300 text-amber-700' 
+                : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white'
+            }`}
+          />
+        </div>
+        <select
+          value={unit}
+          onChange={(e) => onUnitChange(e.target.value)}
+          className="px-3 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 cursor-pointer min-w-[80px]"
+        >
+          {Object.entries(units).map(([key, val]) => (
+            <option key={key} value={key}>{val.label}</option>
+          ))}
+        </select>
+      </div>
+      {helper && <p className="text-xs text-slate-500">{helper}</p>}
+      {isCalculated && value && <p className="text-xs text-amber-600">← Calculated</p>}
+    </div>
+  );
+}
+
 // MW Input Field with inline search
 function MWInputField({ 
   value, 
@@ -842,33 +928,42 @@ function ResultDisplay({ label, value, unit, onCopy }: { label: string; value: s
   );
 }
 
-// Molarity Calculator - Flexible 4-field solver
+// Molarity Calculator - Flexible 4-field solver with unit conversion
 function MolarityCalculator({ onCalculate }: CalculatorProps) {
   const [mass, setMass] = useState('');
+  const [massUnit, setMassUnit] = useState('g');
   const [mw, setMw] = useState('');
   const [volume, setVolume] = useState('');
+  const [volUnit, setVolUnit] = useState('mL');
   const [molarity, setMolarity] = useState('');
+  const [concUnit, setConcUnit] = useState('M');
 
   const result = useMemo(() => {
-    const m = parseFloat(mass);
+    const rawMass = parseFloat(mass);
     const w = parseFloat(mw);
-    const v = parseFloat(volume);
-    const M = parseFloat(molarity);
+    const rawVol = parseFloat(volume);
+    const rawConc = parseFloat(molarity);
+
+    // Convert to base units (g, mL, M)
+    const m = !isNaN(rawMass) ? rawMass * MASS_UNITS[massUnit].toBase : NaN;
+    const v = !isNaN(rawVol) ? rawVol * VOL_UNITS[volUnit].toBase : NaN;
+    const M = !isNaN(rawConc) ? rawConc * CONC_UNITS[concUnit].toBase : NaN;
 
     const filled = [!isNaN(m), !isNaN(w), !isNaN(v), !isNaN(M)];
     const filledCount = filled.filter(Boolean).length;
 
     if (filledCount !== 3) return null;
 
-    // mass = M × V × MW
+    // mass = M × V × MW (result in g)
     if (isNaN(m) && w > 0 && v > 0 && M > 0) {
-      const calc = M * (v / 1000) * w;
+      const calcBase = M * (v / 1000) * w;
+      const calc = calcBase * MASS_UNITS[massUnit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'g', 
+        unit: massUnit, 
         label: 'Mass needed',
         field: 'mass',
-        equation: `mass = ${M} M × ${v/1000} L × ${w} g/mol = ${calc.toPrecision(4)} g`
+        equation: `mass = ${rawConc} ${concUnit} × ${rawVol} ${volUnit} × ${w} g/mol = ${calc.toPrecision(4)} ${massUnit}`
       };
     }
     // MW = mass / (M × V)
@@ -879,53 +974,55 @@ function MolarityCalculator({ onCalculate }: CalculatorProps) {
         unit: 'g/mol', 
         label: 'Molecular weight',
         field: 'mw',
-        equation: `MW = ${m} g / (${M} M × ${v/1000} L) = ${calc.toPrecision(4)} g/mol`
+        equation: `MW = ${rawMass} ${massUnit} / (${rawConc} ${concUnit} × ${rawVol} ${volUnit}) = ${calc.toPrecision(4)} g/mol`
       };
     }
-    // V = mass / (M × MW)
+    // V = mass / (M × MW) (result in mL)
     if (isNaN(v) && m > 0 && w > 0 && M > 0) {
-      const calc = (m / (M * w)) * 1000;
+      const calcBase = (m / (M * w)) * 1000;
+      const calc = calcBase * VOL_UNITS[volUnit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'mL', 
+        unit: volUnit, 
         label: 'Volume',
         field: 'volume',
-        equation: `V = ${m} g / (${M} M × ${w} g/mol) × 1000 = ${calc.toPrecision(4)} mL`
+        equation: `V = ${rawMass} ${massUnit} / (${rawConc} ${concUnit} × ${w} g/mol) = ${calc.toPrecision(4)} ${volUnit}`
       };
     }
-    // M = mass / (MW × V)
+    // M = mass / (MW × V) (result in M)
     if (isNaN(M) && m > 0 && w > 0 && v > 0) {
       const moles = m / w;
-      const calc = moles / (v / 1000);
+      const calcBase = moles / (v / 1000);
+      const calc = calcBase * CONC_UNITS[concUnit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'M', 
+        unit: concUnit, 
         label: 'Molarity',
         field: 'molarity',
-        equation: `M = (${m} g / ${w} g/mol) / ${v/1000} L = ${calc.toPrecision(4)} M`
+        equation: `M = (${rawMass} ${massUnit} / ${w} g/mol) / ${rawVol} ${volUnit} = ${calc.toPrecision(4)} ${concUnit}`
       };
     }
     return null;
-  }, [mass, mw, volume, molarity]);
+  }, [mass, massUnit, mw, volume, volUnit, molarity, concUnit]);
 
   const handleCalculate = () => {
     if (result) {
-      onCalculate('molarity', { mass, mw, volume, molarity }, `${result.value} ${result.unit}`, result.equation);
+      onCalculate('molarity', { mass, massUnit, mw, volume, volUnit, molarity, concUnit }, `${result.value} ${result.unit}`, result.equation);
     }
   };
 
   const getIsCalculated = (field: string) => {
-    const m = parseFloat(mass);
+    const rawMass = parseFloat(mass);
     const w = parseFloat(mw);
-    const v = parseFloat(volume);
-    const M = parseFloat(molarity);
-    const filled = [!isNaN(m), !isNaN(w), !isNaN(v), !isNaN(M)].filter(Boolean).length;
+    const rawVol = parseFloat(volume);
+    const rawConc = parseFloat(molarity);
+    const filled = [!isNaN(rawMass), !isNaN(w), !isNaN(rawVol), !isNaN(rawConc)].filter(Boolean).length;
     
     if (filled === 3) {
-      if (field === 'mass' && isNaN(m)) return true;
+      if (field === 'mass' && isNaN(rawMass)) return true;
       if (field === 'mw' && isNaN(w)) return true;
-      if (field === 'volume' && isNaN(v)) return true;
-      if (field === 'molarity' && isNaN(M)) return true;
+      if (field === 'volume' && isNaN(rawVol)) return true;
+      if (field === 'molarity' && isNaN(rawConc)) return true;
     }
     return false;
   };
@@ -939,11 +1036,13 @@ function MolarityCalculator({ onCalculate }: CalculatorProps) {
       <p className="text-sm text-slate-500 mb-6">Enter any 3 values to calculate the 4th</p>
 
       <div className="grid gap-4 mb-6">
-        <InputField 
+        <InputFieldWithUnit 
           label="Mass of solute" 
           value={mass} 
-          onChange={setMass} 
-          unit="g" 
+          onChange={setMass}
+          unit={massUnit}
+          onUnitChange={setMassUnit}
+          units={MASS_UNITS}
           isCalculated={getIsCalculated('mass')}
         />
         <MWInputField 
@@ -951,18 +1050,22 @@ function MolarityCalculator({ onCalculate }: CalculatorProps) {
           onChange={setMw} 
           isCalculated={getIsCalculated('mw')}
         />
-        <InputField 
+        <InputFieldWithUnit 
           label="Volume of solution" 
           value={volume} 
-          onChange={setVolume} 
-          unit="mL" 
+          onChange={setVolume}
+          unit={volUnit}
+          onUnitChange={setVolUnit}
+          units={VOL_UNITS}
           isCalculated={getIsCalculated('volume')}
         />
-        <InputField 
+        <InputFieldWithUnit 
           label="Molarity" 
           value={molarity} 
-          onChange={setMolarity} 
-          unit="M" 
+          onChange={setMolarity}
+          unit={concUnit}
+          onUnitChange={setConcUnit}
+          units={CONC_UNITS}
           isCalculated={getIsCalculated('molarity')}
         />
       </div>
@@ -979,18 +1082,28 @@ function MolarityCalculator({ onCalculate }: CalculatorProps) {
   );
 }
 
-// Dilution Calculator - Flexible 4-field solver
+// Dilution Calculator - Flexible 4-field solver with unit conversion
 function DilutionCalculator({ onCalculate }: CalculatorProps) {
   const [c1, setC1] = useState('');
+  const [c1Unit, setC1Unit] = useState('M');
   const [v1, setV1] = useState('');
+  const [v1Unit, setV1Unit] = useState('mL');
   const [c2, setC2] = useState('');
+  const [c2Unit, setC2Unit] = useState('mM');
   const [v2, setV2] = useState('');
+  const [v2Unit, setV2Unit] = useState('mL');
 
   const result = useMemo(() => {
-    const C1 = parseFloat(c1);
-    const V1 = parseFloat(v1);
-    const C2 = parseFloat(c2);
-    const V2 = parseFloat(v2);
+    const rawC1 = parseFloat(c1);
+    const rawV1 = parseFloat(v1);
+    const rawC2 = parseFloat(c2);
+    const rawV2 = parseFloat(v2);
+
+    // Convert to base units (M, mL)
+    const C1 = !isNaN(rawC1) ? rawC1 * CONC_UNITS[c1Unit].toBase : NaN;
+    const V1 = !isNaN(rawV1) ? rawV1 * VOL_UNITS[v1Unit].toBase : NaN;
+    const C2 = !isNaN(rawC2) ? rawC2 * CONC_UNITS[c2Unit].toBase : NaN;
+    const V2 = !isNaN(rawV2) ? rawV2 * VOL_UNITS[v2Unit].toBase : NaN;
 
     const filled = [!isNaN(C1), !isNaN(V1), !isNaN(C2), !isNaN(V2)];
     const filledCount = filled.filter(Boolean).length;
@@ -998,51 +1111,55 @@ function DilutionCalculator({ onCalculate }: CalculatorProps) {
     if (filledCount !== 3) return null;
 
     if (isNaN(C1) && V1 > 0 && C2 > 0 && V2 > 0) {
-      const calc = (C2 * V2) / V1;
+      const calcBase = (C2 * V2) / V1;
+      const calc = calcBase * CONC_UNITS[c1Unit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'M', 
+        unit: c1Unit, 
         label: 'Stock concentration (C₁)',
         field: 'c1',
-        equation: `C₁ = (${C2} × ${V2}) / ${V1} = ${calc.toPrecision(4)} M`
+        equation: `C₁ = (${rawC2} ${c2Unit} × ${rawV2} ${v2Unit}) / ${rawV1} ${v1Unit} = ${calc.toPrecision(4)} ${c1Unit}`
       };
     }
     if (isNaN(V1) && C1 > 0 && C2 > 0 && V2 > 0) {
-      const calc = (C2 * V2) / C1;
+      const calcBase = (C2 * V2) / C1;
+      const calc = calcBase * VOL_UNITS[v1Unit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'mL', 
+        unit: v1Unit, 
         label: 'Stock volume needed (V₁)',
         field: 'v1',
-        equation: `V₁ = (${C2} × ${V2}) / ${C1} = ${calc.toPrecision(4)} mL`
+        equation: `V₁ = (${rawC2} ${c2Unit} × ${rawV2} ${v2Unit}) / ${rawC1} ${c1Unit} = ${calc.toPrecision(4)} ${v1Unit}`
       };
     }
     if (isNaN(C2) && C1 > 0 && V1 > 0 && V2 > 0) {
-      const calc = (C1 * V1) / V2;
+      const calcBase = (C1 * V1) / V2;
+      const calc = calcBase * CONC_UNITS[c2Unit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'M', 
+        unit: c2Unit, 
         label: 'Final concentration (C₂)',
         field: 'c2',
-        equation: `C₂ = (${C1} × ${V1}) / ${V2} = ${calc.toPrecision(4)} M`
+        equation: `C₂ = (${rawC1} ${c1Unit} × ${rawV1} ${v1Unit}) / ${rawV2} ${v2Unit} = ${calc.toPrecision(4)} ${c2Unit}`
       };
     }
     if (isNaN(V2) && C1 > 0 && V1 > 0 && C2 > 0) {
-      const calc = (C1 * V1) / C2;
+      const calcBase = (C1 * V1) / C2;
+      const calc = calcBase * VOL_UNITS[v2Unit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'mL', 
+        unit: v2Unit, 
         label: 'Final volume (V₂)',
         field: 'v2',
-        equation: `V₂ = (${C1} × ${V1}) / ${C2} = ${calc.toPrecision(4)} mL`
+        equation: `V₂ = (${rawC1} ${c1Unit} × ${rawV1} ${v1Unit}) / ${rawC2} ${c2Unit} = ${calc.toPrecision(4)} ${v2Unit}`
       };
     }
     return null;
-  }, [c1, v1, c2, v2]);
+  }, [c1, c1Unit, v1, v1Unit, c2, c2Unit, v2, v2Unit]);
 
   const handleCalculate = () => {
     if (result) {
-      onCalculate('dilution', { c1, v1, c2, v2 }, `${result.value} ${result.unit}`, result.equation);
+      onCalculate('dilution', { c1, c1Unit, v1, v1Unit, c2, c2Unit, v2, v2Unit }, `${result.value} ${result.unit}`, result.equation);
     }
   };
 
@@ -1070,33 +1187,41 @@ function DilutionCalculator({ onCalculate }: CalculatorProps) {
       </div>
       <p className="text-sm text-slate-500 mb-6">Enter any 3 values to calculate the 4th</p>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <InputField 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <InputFieldWithUnit 
           label="Stock conc. (C₁)" 
           value={c1} 
-          onChange={setC1} 
-          unit="M" 
+          onChange={setC1}
+          unit={c1Unit}
+          onUnitChange={setC1Unit}
+          units={CONC_UNITS}
           isCalculated={getIsCalculated('c1')}
         />
-        <InputField 
+        <InputFieldWithUnit 
           label="Stock vol. (V₁)" 
           value={v1} 
-          onChange={setV1} 
-          unit="mL" 
+          onChange={setV1}
+          unit={v1Unit}
+          onUnitChange={setV1Unit}
+          units={VOL_UNITS}
           isCalculated={getIsCalculated('v1')}
         />
-        <InputField 
+        <InputFieldWithUnit 
           label="Final conc. (C₂)" 
           value={c2} 
-          onChange={setC2} 
-          unit="M" 
+          onChange={setC2}
+          unit={c2Unit}
+          onUnitChange={setC2Unit}
+          units={CONC_UNITS}
           isCalculated={getIsCalculated('c2')}
         />
-        <InputField 
+        <InputFieldWithUnit 
           label="Final vol. (V₂)" 
           value={v2} 
-          onChange={setV2} 
-          unit="mL" 
+          onChange={setV2}
+          unit={v2Unit}
+          onUnitChange={setV2Unit}
+          units={VOL_UNITS}
           isCalculated={getIsCalculated('v2')}
         />
       </div>
@@ -1113,10 +1238,12 @@ function DilutionCalculator({ onCalculate }: CalculatorProps) {
   );
 }
 
-// Serial Dilution Calculator
+// Serial Dilution Calculator with unit conversion
 function SerialDilutionCalculator({ onCalculate }: CalculatorProps) {
   const [initialConc, setInitialConc] = useState('');
+  const [concUnit, setConcUnit] = useState('M');
   const [transferVol, setTransferVol] = useState('');
+  const [volUnit, setVolUnit] = useState('µL');
   const [diluentVol, setDiluentVol] = useState('');
   const [steps, setSteps] = useState('');
 
@@ -1138,12 +1265,17 @@ function SerialDilutionCalculator({ onCalculate }: CalculatorProps) {
     return null;
   }, [initialConc, transferVol, diluentVol, steps]);
 
+  const formatConc = (conc: number) => {
+    if (conc < 0.001) return conc.toExponential(2);
+    return conc.toPrecision(3);
+  };
+
   const handleCalculate = () => {
     if (results) {
       const finalConc = results.concentrations[results.concentrations.length - 1];
-      const equation = `C_final = ${initialConc} × (${transferVol}/(${transferVol}+${diluentVol}))^${steps}`;
-      onCalculate('serial', { initialConc, transferVol, diluentVol, steps }, 
-        `Final: ${finalConc < 0.001 ? finalConc.toExponential(2) : finalConc.toPrecision(3)} M`, equation);
+      const equation = `C_final = ${initialConc} ${concUnit} × (${transferVol}/(${transferVol}+${diluentVol}))^${steps}`;
+      onCalculate('serial', { initialConc, concUnit, transferVol, volUnit, diluentVol, steps }, 
+        `Final: ${formatConc(finalConc)} ${concUnit}`, equation);
     }
   };
 
@@ -1151,10 +1283,29 @@ function SerialDilutionCalculator({ onCalculate }: CalculatorProps) {
     <div className="p-6">
       <h2 className="text-xl font-semibold text-slate-900 mb-6">Serial Dilution Calculator</h2>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <InputField label="Initial concentration" value={initialConc} onChange={setInitialConc} unit="M" />
-        <InputField label="Transfer volume" value={transferVol} onChange={setTransferVol} unit="mL" />
-        <InputField label="Diluent volume" value={diluentVol} onChange={setDiluentVol} unit="mL" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <InputFieldWithUnit 
+          label="Initial concentration" 
+          value={initialConc} 
+          onChange={setInitialConc}
+          unit={concUnit}
+          onUnitChange={setConcUnit}
+          units={CONC_UNITS}
+        />
+        <InputFieldWithUnit 
+          label="Transfer volume" 
+          value={transferVol} 
+          onChange={setTransferVol}
+          unit={volUnit}
+          onUnitChange={setVolUnit}
+          units={VOL_UNITS}
+        />
+        <InputField 
+          label="Diluent volume" 
+          value={diluentVol} 
+          onChange={setDiluentVol} 
+          unit={volUnit}
+        />
         <InputField label="Number of steps" value={steps} onChange={setSteps} placeholder="1-20" />
       </div>
 
@@ -1182,7 +1333,7 @@ function SerialDilutionCalculator({ onCalculate }: CalculatorProps) {
                 <div key={i} className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-lg">
                   <span className="text-xs text-slate-500">Step {i + 1}</span>
                   <span className="font-mono text-sm text-slate-900">
-                    {conc < 0.001 ? conc.toExponential(2) : conc.toPrecision(3)} M
+                    {formatConc(conc)} {concUnit}
                   </span>
                 </div>
               ))}
@@ -1409,18 +1560,26 @@ function UnitConverter({ onCalculate }: CalculatorProps) {
   );
 }
 
-// Stock Solution Calculator - Flexible 4-field solver
+// Stock Solution Calculator - Flexible 4-field solver with unit conversion
 function StockSolutionCalculator({ onCalculate }: CalculatorProps) {
   const [stockConc, setStockConc] = useState('');
+  const [concUnit, setConcUnit] = useState('M');
   const [stockVol, setStockVol] = useState('');
+  const [volUnit, setVolUnit] = useState('mL');
   const [mw, setMw] = useState('');
   const [mass, setMass] = useState('');
+  const [massUnit, setMassUnit] = useState('g');
 
   const result = useMemo(() => {
-    const c = parseFloat(stockConc);
-    const v = parseFloat(stockVol);
+    const rawConc = parseFloat(stockConc);
+    const rawVol = parseFloat(stockVol);
     const w = parseFloat(mw);
-    const m = parseFloat(mass);
+    const rawMass = parseFloat(mass);
+
+    // Convert to base units (M, mL, g)
+    const c = !isNaN(rawConc) ? rawConc * CONC_UNITS[concUnit].toBase : NaN;
+    const v = !isNaN(rawVol) ? rawVol * VOL_UNITS[volUnit].toBase : NaN;
+    const m = !isNaN(rawMass) ? rawMass * MASS_UNITS[massUnit].toBase : NaN;
 
     const filled = [!isNaN(c), !isNaN(v), !isNaN(w), !isNaN(m)];
     const filledCount = filled.filter(Boolean).length;
@@ -1429,35 +1588,38 @@ function StockSolutionCalculator({ onCalculate }: CalculatorProps) {
 
     // mass = M × V × MW
     if (isNaN(m) && c > 0 && v > 0 && w > 0) {
-      const calc = c * (v / 1000) * w;
+      const calcBase = c * (v / 1000) * w;
+      const calc = calcBase * MASS_UNITS[massUnit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'g', 
+        unit: massUnit, 
         label: 'Mass needed',
         field: 'mass',
-        equation: `mass = ${c} M × ${v/1000} L × ${w} g/mol = ${calc.toPrecision(4)} g`
+        equation: `mass = ${rawConc} ${concUnit} × ${rawVol} ${volUnit} × ${w} g/mol = ${calc.toPrecision(4)} ${massUnit}`
       };
     }
     // M = mass / (V × MW)
     if (isNaN(c) && m > 0 && v > 0 && w > 0) {
-      const calc = m / ((v / 1000) * w);
+      const calcBase = m / ((v / 1000) * w);
+      const calc = calcBase * CONC_UNITS[concUnit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'M', 
+        unit: concUnit, 
         label: 'Stock concentration',
         field: 'stockConc',
-        equation: `M = ${m} g / (${v/1000} L × ${w} g/mol) = ${calc.toPrecision(4)} M`
+        equation: `M = ${rawMass} ${massUnit} / (${rawVol} ${volUnit} × ${w} g/mol) = ${calc.toPrecision(4)} ${concUnit}`
       };
     }
     // V = mass / (M × MW)
     if (isNaN(v) && m > 0 && c > 0 && w > 0) {
-      const calc = (m / (c * w)) * 1000;
+      const calcBase = (m / (c * w)) * 1000;
+      const calc = calcBase * VOL_UNITS[volUnit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'mL', 
+        unit: volUnit, 
         label: 'Volume to prepare',
         field: 'stockVol',
-        equation: `V = ${m} g / (${c} M × ${w} g/mol) × 1000 = ${calc.toPrecision(4)} mL`
+        equation: `V = ${rawMass} ${massUnit} / (${rawConc} ${concUnit} × ${w} g/mol) = ${calc.toPrecision(4)} ${volUnit}`
       };
     }
     // MW = mass / (M × V)
@@ -1468,15 +1630,15 @@ function StockSolutionCalculator({ onCalculate }: CalculatorProps) {
         unit: 'g/mol', 
         label: 'Molecular weight',
         field: 'mw',
-        equation: `MW = ${m} g / (${c} M × ${v/1000} L) = ${calc.toPrecision(4)} g/mol`
+        equation: `MW = ${rawMass} ${massUnit} / (${rawConc} ${concUnit} × ${rawVol} ${volUnit}) = ${calc.toPrecision(4)} g/mol`
       };
     }
     return null;
-  }, [stockConc, stockVol, mw, mass]);
+  }, [stockConc, concUnit, stockVol, volUnit, mw, mass, massUnit]);
 
   const handleCalculate = () => {
     if (result) {
-      onCalculate('stock', { stockConc, stockVol, mw, mass }, `${result.value} ${result.unit}`, result.equation);
+      onCalculate('stock', { stockConc, concUnit, stockVol, volUnit, mw, mass, massUnit }, `${result.value} ${result.unit}`, result.equation);
     }
   };
 
@@ -1505,18 +1667,22 @@ function StockSolutionCalculator({ onCalculate }: CalculatorProps) {
       <p className="text-sm text-slate-500 mb-6">Enter any 3 values to calculate the 4th</p>
 
       <div className="grid gap-4 mb-6">
-        <InputField 
+        <InputFieldWithUnit 
           label="Desired stock concentration" 
           value={stockConc} 
-          onChange={setStockConc} 
-          unit="M" 
+          onChange={setStockConc}
+          unit={concUnit}
+          onUnitChange={setConcUnit}
+          units={CONC_UNITS}
           isCalculated={getIsCalculated('stockConc')}
         />
-        <InputField 
+        <InputFieldWithUnit 
           label="Volume to prepare" 
           value={stockVol} 
-          onChange={setStockVol} 
-          unit="mL" 
+          onChange={setStockVol}
+          unit={volUnit}
+          onUnitChange={setVolUnit}
+          units={VOL_UNITS}
           isCalculated={getIsCalculated('stockVol')}
         />
         <MWInputField 
@@ -1524,11 +1690,13 @@ function StockSolutionCalculator({ onCalculate }: CalculatorProps) {
           onChange={setMw} 
           isCalculated={getIsCalculated('mw')}
         />
-        <InputField 
+        <InputFieldWithUnit 
           label="Mass of compound" 
           value={mass} 
-          onChange={setMass} 
-          unit="g" 
+          onChange={setMass}
+          unit={massUnit}
+          onUnitChange={setMassUnit}
+          units={MASS_UNITS}
           isCalculated={getIsCalculated('mass')}
         />
       </div>
@@ -1545,8 +1713,8 @@ function StockSolutionCalculator({ onCalculate }: CalculatorProps) {
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
               <span className="text-sm text-slate-600 block mb-2">Instructions</span>
               <p className="text-sm text-slate-900">
-                Weigh {result.value} g of compound. Dissolve in ~{(parseFloat(stockVol) * 0.8).toFixed(0)} mL solvent. 
-                Adjust final volume to {stockVol} mL.
+                Weigh {result.value} {massUnit} of compound. Dissolve in ~{(parseFloat(stockVol) * 0.8).toFixed(0)} {volUnit} solvent. 
+                Adjust final volume to {stockVol} {volUnit}.
               </p>
             </div>
           )}
@@ -1648,16 +1816,22 @@ function BufferCalculator({ onCalculate }: CalculatorProps) {
   );
 }
 
-// Osmolarity Calculator - Flexible 3-field solver
+// Osmolarity Calculator - Flexible 3-field solver with unit conversion
 function OsmolarityCalculator({ onCalculate }: CalculatorProps) {
   const [molarity, setMolarity] = useState('');
+  const [concUnit, setConcUnit] = useState('mM');
   const [particles, setParticles] = useState('');
   const [osmolarity, setOsmolarity] = useState('');
+  const [osmUnit, setOsmUnit] = useState('mOsm/L');
 
   const result = useMemo(() => {
-    const M = parseFloat(molarity);
+    const rawM = parseFloat(molarity);
     const i = parseFloat(particles);
-    const O = parseFloat(osmolarity);
+    const rawO = parseFloat(osmolarity);
+
+    // Convert to base units (M, mOsm/L)
+    const M = !isNaN(rawM) ? rawM * CONC_UNITS[concUnit].toBase : NaN;
+    const O = !isNaN(rawO) ? rawO * OSM_UNITS[osmUnit].toBase : NaN;
 
     const filled = [!isNaN(M), !isNaN(i), !isNaN(O)];
     const filledCount = filled.filter(Boolean).length;
@@ -1665,23 +1839,25 @@ function OsmolarityCalculator({ onCalculate }: CalculatorProps) {
     if (filledCount !== 2) return null;
 
     if (isNaN(O) && M > 0 && i > 0) {
-      const calc = M * i * 1000;
+      const calcBase = M * i * 1000;
+      const calc = calcBase * OSM_UNITS[osmUnit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'mOsm/L', 
+        unit: osmUnit, 
         label: 'Osmolarity',
         field: 'osmolarity',
-        equation: `Osm = ${M} M × ${i} × 1000 = ${calc.toPrecision(4)} mOsm/L`
+        equation: `Osm = ${rawM} ${concUnit} × ${i} = ${calc.toPrecision(4)} ${osmUnit}`
       };
     }
     if (isNaN(M) && O > 0 && i > 0) {
-      const calc = O / (i * 1000);
+      const calcBase = O / (i * 1000);
+      const calc = calcBase * CONC_UNITS[concUnit].fromBase;
       return { 
         value: calc.toPrecision(4), 
-        unit: 'M', 
+        unit: concUnit, 
         label: 'Molarity',
         field: 'molarity',
-        equation: `M = ${O} mOsm/L / (${i} × 1000) = ${calc.toPrecision(4)} M`
+        equation: `M = ${rawO} ${osmUnit} / ${i} = ${calc.toPrecision(4)} ${concUnit}`
       };
     }
     if (isNaN(i) && M > 0 && O > 0) {
@@ -1691,15 +1867,15 @@ function OsmolarityCalculator({ onCalculate }: CalculatorProps) {
         unit: '', 
         label: 'Dissociation coefficient (i)',
         field: 'particles',
-        equation: `i = ${O} mOsm/L / (${M} M × 1000) = ${calc.toPrecision(2)}`
+        equation: `i = ${rawO} ${osmUnit} / ${rawM} ${concUnit} = ${calc.toPrecision(2)}`
       };
     }
     return null;
-  }, [molarity, particles, osmolarity]);
+  }, [molarity, concUnit, particles, osmolarity, osmUnit]);
 
   const handleCalculate = () => {
     if (result) {
-      onCalculate('osmolarity', { molarity, particles, osmolarity }, `${result.value} ${result.unit}`, result.equation);
+      onCalculate('osmolarity', { molarity, concUnit, particles, osmolarity, osmUnit }, `${result.value} ${result.unit}`, result.equation);
     }
   };
 
@@ -1736,11 +1912,13 @@ function OsmolarityCalculator({ onCalculate }: CalculatorProps) {
       <p className="text-sm text-slate-500 mb-6">Enter any 2 values to calculate the 3rd</p>
 
       <div className="grid gap-4 mb-6">
-        <InputField 
+        <InputFieldWithUnit 
           label="Molarity" 
           value={molarity} 
-          onChange={setMolarity} 
-          unit="M" 
+          onChange={setMolarity}
+          unit={concUnit}
+          onUnitChange={setConcUnit}
+          units={CONC_UNITS}
           isCalculated={getIsCalculated('molarity')}
         />
         <InputField 
@@ -1750,11 +1928,13 @@ function OsmolarityCalculator({ onCalculate }: CalculatorProps) {
           helper="Number of particles the solute dissociates into"
           isCalculated={getIsCalculated('particles')}
         />
-        <InputField 
+        <InputFieldWithUnit 
           label="Osmolarity" 
           value={osmolarity} 
-          onChange={setOsmolarity} 
-          unit="mOsm/L" 
+          onChange={setOsmolarity}
+          unit={osmUnit}
+          onUnitChange={setOsmUnit}
+          units={OSM_UNITS}
           isCalculated={getIsCalculated('osmolarity')}
         />
       </div>
